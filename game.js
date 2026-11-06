@@ -32,7 +32,7 @@ const CONFIG = {
   // ---------- Skins: how the game looks and sounds. Cosmetic only. ----------
   // Each skin's key (tink, coffee-counter, bar-night) is also its folder name for art and sounds:
   //   assets/skins/<key>/tier1.png ... tier8.png   square, transparent background, 256 x 256 or bigger
-  //   assets/skins/<key>/<sound file names below>  any short .mp3, .ogg or .wav
+  //   assets/skins/<key>/<sound file names below>  any short .mp3, .ogg or .wav (spill is used by Table Push)
   // Any file that isn't there falls back to the placeholder shape or the built-in sound.
   //   name:       shown in the skin picker and the copied result
   //   background: the color behind the jar
@@ -54,7 +54,7 @@ const CONFIG = {
         { name: 'Emote 7', color: '#2ec4b6' },
         { name: 'Emote 8', color: '#ffe14d' },
       ],
-      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3' },
+      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3' },
     },
     'coffee-counter': {
       name: 'Coffee Counter',
@@ -70,7 +70,7 @@ const CONFIG = {
         { name: 'Coffee bag', color: '#d9a54a' },
         { name: "Tink's signature tub", color: '#ff5fa2' },
       ],
-      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3' },
+      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3' },
     },
     'bar-night': {
       name: 'Bar Night',
@@ -86,7 +86,7 @@ const CONFIG = {
         { name: 'Crate', color: '#a87445' },
         { name: 'Keg', color: '#b8c2cc' },
       ],
-      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3' },
+      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3' },
     },
   },
   bigBonus: 1000,       // two tier-8 items touching: both vanish, plus this
