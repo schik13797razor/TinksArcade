@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Tink's Arcade</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #1a1030;
+      overflow: hidden;
+      /* Stop phones from scrolling, zooming or selecting text while playing. */
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #game {
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+    }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+
+  <!-- Phaser 3 includes Matter.js physics. For the Twitch extension later,
+       this file must be copied into the project (Twitch doesn't allow CDN scripts). -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+
+  <!-- arcade.js: shared tools (best scores, seeded random, difficulty, copy result) and the main menu. -->
+  <script src="arcade.js"></script>
+  <!-- game.js: Tink's Emote Jar. Each future game is one more file registered with Arcade. -->
+  <script src="game.js"></script>
+  <script>
+    Arcade.boot('game');
+  </script>
+</body>
+</html>

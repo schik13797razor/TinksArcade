@@ -1,0 +1,12 @@
+# Editors and OS clutter
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Local tool settings
+.claude/
+
+# Zipped builds for the Twitch extension upload
+*.zip

@@ -1,0 +1,7 @@
+# Keep text files with Linux line endings in the repo, so diffs stay clean on any machine.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.webp binary
+*.ogg binary
+*.mp3 binary
