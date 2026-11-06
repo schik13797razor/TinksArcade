@@ -46,6 +46,19 @@ const CONFIG = {
   warnAfter: 0.3,       // the line starts flashing after this share of overflowMs
   dropperSpeed: 700,    // arrow keys, board units per second
 
+  // Pixel bursts for big merges.
+  effects: {
+    burstFromTier: 6,      // merges that make this tier or bigger get a burst
+    burstPixels: 18,       // pixels in the smallest burst...
+    burstPixelsPerTier: 12, // ...plus this many for each tier above it
+    burstSpeed: [150, 450], // how fast pixels fly out (min, max)
+    burstLifeMs: 700,      // how long pixels last
+    pixelSize: 10,         // board units (5 screen pixels in the Twitch panel)
+    bonusPixels: 90,       // the two-tier-8 burst
+    bonusSpeed: [250, 750],
+    bonusLifeMs: 1100,
+  },
+
   // Sounds, made on the fly (the note fields are explained above Arcade.sfx in arcade.js).
   sounds: {
     volume: 1, // this game's level, 0 to 1, on top of the arcade's master volume
@@ -469,14 +482,37 @@ class EmoteJarPlay extends Phaser.Scene {
         this.createItem(tier + 1, x, y);
         this.addScore(CONFIG.tiers[tier - 1].points, x, y, CONFIG.tiers[tier].color);
         playSound(this, mergeSound(tier), 'merge');
+        this.mergeBurst(tier + 1, x, y);
       } else {
         // Two top-tier items: both vanish with a big bonus.
         this.addScore(CONFIG.bigBonus, x, y, CONFIG.tiers[tier - 1].color, true);
         playSound(this, CONFIG.sounds.bonus, 'bonus');
-        this.cameras.main.flash(250, 255, 225, 77);
-        this.cameras.main.shake(250, 0.01);
+        const fx = CONFIG.effects;
+        Arcade.fx.pixelBurst(this, x, y, {
+          count: fx.bonusPixels,
+          colors: CONFIG.tiers.map((t) => t.color).concat('#ffffff'),
+          speedMin: fx.bonusSpeed[0],
+          speedMax: fx.bonusSpeed[1],
+          lifeMs: fx.bonusLifeMs,
+          size: fx.pixelSize * 1.3,
+        });
+        this.cameras.main.shake(250, 0.008);
       }
     }
+  }
+
+  // A pixel burst in the new item's colors when a merge makes a big tier.
+  mergeBurst(newTier, x, y) {
+    const fx = CONFIG.effects;
+    if (newTier < fx.burstFromTier) return;
+    Arcade.fx.pixelBurst(this, x, y, {
+      count: fx.burstPixels + (newTier - fx.burstFromTier) * fx.burstPixelsPerTier,
+      colors: [CONFIG.tiers[newTier - 1].color, '#ffffff'],
+      speedMin: fx.burstSpeed[0],
+      speedMax: fx.burstSpeed[1],
+      lifeMs: fx.burstLifeMs,
+      size: fx.pixelSize,
+    });
   }
 
   addScore(points, x, y, color, big = false) {

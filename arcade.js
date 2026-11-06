@@ -9,6 +9,8 @@
 //   Arcade.getPeriod(game, mode)  the seed and label for Free Play, Daily or Weekly
 //   Arcade.difficulty(id)         difficulty presets (Easy, Normal, Hard)
 //   Arcade.resultLine / copyText  the short score line people paste into Discord
+//   Arcade.sfx.play               short sound effects, with a remembered mute
+//   Arcade.fx.pixelBurst          a little pixel explosion for big moments
 //   Arcade.ui.button / ui.text    simple buttons and text in the arcade style
 
 const ARCADE_CONFIG = {
@@ -313,6 +315,38 @@ const Arcade = (() => {
     },
   };
 
+  // ---------- Visual effects ----------
+  // A burst of little square pixels that fly out, fall and fade.
+  // options: count, colors (list of hex strings like '#ff5fa2'), speedMin, speedMax,
+  //          lifeMs, size (pixel size in board units), gravity
+  function pixelBurst(scene, x, y, options = {}) {
+    const key = 'arcade-pixel';
+    if (!scene.textures.exists(key)) {
+      const tex = scene.textures.createCanvas(key, 8, 8);
+      tex.getContext().fillStyle = '#ffffff';
+      tex.getContext().fillRect(0, 0, 8, 8);
+      tex.refresh();
+    }
+    const colors = (options.colors || ['#ffffff']).map((c) => Phaser.Display.Color.HexStringToColor(c).color);
+    const lifeMs = options.lifeMs || 700;
+    const size = (options.size || 10) / 8;
+    const emitter = scene.add.particles(x, y, key, {
+      speed: { min: options.speedMin || 150, max: options.speedMax || 450 },
+      angle: { min: 0, max: 360 },
+      lifespan: { min: lifeMs * 0.6, max: lifeMs },
+      gravityY: options.gravity ?? 700,
+      scale: { start: size, end: size * 0.3 },
+      alpha: { start: 1, end: 0 },
+      rotate: { min: 0, max: 360 },
+      tint: colors,
+      emitting: false,
+    });
+    emitter.setDepth(30);
+    emitter.explode(options.count || 20);
+    scene.time.delayedCall(lifeMs + 100, () => emitter.destroy());
+    return emitter;
+  }
+
   // ---------- UI helpers ----------
   function text(scene, x, y, value, size, color, options = {}) {
     return scene.add
@@ -496,6 +530,7 @@ const Arcade = (() => {
     resultLine,
     copyText,
     sfx,
+    fx: { pixelBurst },
     ui: { text, button, muteButton },
     registerGame,
     boot,
