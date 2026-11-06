@@ -46,6 +46,37 @@ const CONFIG = {
   warnAfter: 0.3,       // the line starts flashing after this share of overflowMs
   dropperSpeed: 700,    // arrow keys, board units per second
 
+  // Sounds, made on the fly (the note fields are explained above Arcade.sfx in arcade.js).
+  sounds: {
+    volume: 1, // this game's level, 0 to 1, on top of the arcade's master volume
+    drop: [
+      { noise: true, filter: 1400, duration: 0.06, volume: 0.25 },
+      { freq: 300, to: 160, duration: 0.09, volume: 0.25 },
+    ],
+    // Merge pop pitch in Hz for tiers 1 to 7; it climbs as the items grow.
+    mergePitch: [523, 587, 659, 784, 880, 1047, 1175],
+    mergeVolume: 0.3,
+    bonus: [ // two tier-8 items
+      { noise: true, filter: 3000, duration: 0.35, volume: 0.15 },
+      { freq: 523, type: 'triangle', duration: 0.18, volume: 0.25 },
+      { freq: 659, type: 'triangle', duration: 0.18, volume: 0.25, delay: 0.07 },
+      { freq: 784, type: 'triangle', duration: 0.18, volume: 0.25, delay: 0.14 },
+      { freq: 1047, type: 'triangle', duration: 0.3, volume: 0.25, delay: 0.21 },
+      { freq: 1319, type: 'triangle', duration: 0.45, volume: 0.2, delay: 0.28 },
+    ],
+    gameOver: [
+      { freq: 392, duration: 0.25, volume: 0.25 },
+      { freq: 330, duration: 0.25, volume: 0.25, delay: 0.18 },
+      { freq: 262, duration: 0.5, volume: 0.25, delay: 0.36 },
+    ],
+    newBest: [
+      { freq: 523, type: 'triangle', duration: 0.2, volume: 0.25 },
+      { freq: 659, type: 'triangle', duration: 0.2, volume: 0.25, delay: 0.1 },
+      { freq: 784, type: 'triangle', duration: 0.2, volume: 0.25, delay: 0.2 },
+      { freq: 1047, type: 'triangle', duration: 0.5, volume: 0.25, delay: 0.3 },
+    ],
+  },
+
   // Weekly mode applies one of these, chosen by the week number (week 1 = first entry).
   // Fields you can use: jarWidthMul, gravityMul, cooldownMul, frictionMul (multipliers),
   // restitution, spawnTiers (replace the normal value), lineDropPx (moves the line down).
@@ -82,6 +113,20 @@ function buildRules(mode, difficultyId, period) {
     friction: p.friction * (m.frictionMul ?? 1),
     spawnTiers: m.spawnTiers ?? CONFIG.spawnTiers,
   };
+}
+
+function playSound(scene, notes, key) {
+  Arcade.sfx.play(scene, notes, key, CONFIG.sounds.volume);
+}
+
+// A bubbly pop: a quick upward slide, then a soft higher note.
+function mergeSound(tier) {
+  const s = CONFIG.sounds;
+  const pitch = s.mergePitch[Math.min(tier, s.mergePitch.length) - 1];
+  return [
+    { freq: pitch * 0.6, to: pitch, duration: 0.09, volume: s.mergeVolume },
+    { freq: pitch * 1.5, type: 'triangle', duration: 0.14, volume: s.mergeVolume * 0.4, delay: 0.035 },
+  ];
 }
 
 function tierTextureKey(tier) {
@@ -136,6 +181,7 @@ class EmoteJarStart extends Phaser.Scene {
     this.mode = ['free', 'daily', 'weekly'].includes(last.mode) ? last.mode : 'free';
     this.difficultyId = Arcade.config.difficulties[last.difficulty] ? last.difficulty : 'normal';
 
+    ui.muteButton(this, W - 48, 44);
     ui.text(this, W / 2, 110, CONFIG.title, 56);
     ui.text(this, W / 2, 172, 'Drop. Match two. Merge.', 30, col.muted, { bold: false });
 
@@ -300,6 +346,7 @@ class EmoteJarPlay extends Phaser.Scene {
     dashes(this.warnLine, col.warn, 1);
 
     Arcade.ui.text(this, Arcade.config.width / 2, this.jarBottom + 34, this.contextLabel(), 24, col.muted, { bold: false });
+    Arcade.ui.muteButton(this, Arcade.config.width - 44, this.jarBottom + 32);
   }
 
   contextLabel() {
@@ -377,6 +424,7 @@ class EmoteJarPlay extends Phaser.Scene {
     if (this.isOver || this.time.now - this.lastDropAt < this.rules.cooldownMs) return;
     this.lastDropAt = this.time.now;
     this.createItem(this.current, this.dropX, CONFIG.dropperY);
+    playSound(this, CONFIG.sounds.drop, 'drop');
     this.current = this.next;
     this.next = this.rollTier();
     this.refreshDropper();
@@ -420,9 +468,11 @@ class EmoteJarPlay extends Phaser.Scene {
       if (tier < CONFIG.tiers.length) {
         this.createItem(tier + 1, x, y);
         this.addScore(CONFIG.tiers[tier - 1].points, x, y, CONFIG.tiers[tier].color);
+        playSound(this, mergeSound(tier), 'merge');
       } else {
         // Two top-tier items: both vanish with a big bonus.
         this.addScore(CONFIG.bigBonus, x, y, CONFIG.tiers[tier - 1].color, true);
+        playSound(this, CONFIG.sounds.bonus, 'bonus');
         this.cameras.main.flash(250, 255, 225, 77);
         this.cameras.main.shake(250, 0.01);
       }
@@ -488,6 +538,7 @@ class EmoteJarPlay extends Phaser.Scene {
     // this.best is the best from before this round started.
     const isNewBest = this.score > this.best;
     const best = Math.max(this.best, this.score);
+    playSound(this, isNewBest ? CONFIG.sounds.newBest : CONFIG.sounds.gameOver, 'end');
 
     const W = Arcade.config.width;
     const H = Arcade.config.height;

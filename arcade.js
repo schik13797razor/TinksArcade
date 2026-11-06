@@ -26,6 +26,14 @@ const ARCADE_CONFIG = {
 
   storagePrefix: 'tinks-arcade:',
 
+  // Sound: short effects made on the fly by the browser's audio engine, so there
+  // are no sound files to load. volume is the overall level, 0 to 1.
+  sounds: {
+    volume: 0.6,
+    startMuted: false,
+    click: [{ freq: 660, to: 880, type: 'triangle', duration: 0.05, volume: 0.15 }],
+  },
+
   // Difficulty presets. Each game decides what these multipliers mean.
   //   speed:       how fast things move or fall (higher = faster)
   //   cooldown:    wait between actions (lower = shorter wait)
@@ -222,6 +230,89 @@ const Arcade = (() => {
     }
   }
 
+  // ---------- Sound effects ----------
+  // A sound is a list of notes. Each note is a tone, or a burst of noise when noise: true.
+  //   freq:     pitch in Hz          to:     slide to this pitch by the end
+  //   type:     'sine', 'triangle', 'square' or 'sawtooth'
+  //   duration: seconds              delay:  seconds before it starts
+  //   volume:   0 to 1               filter: noise brightness in Hz (lower = duller thud)
+  let noiseBuffer = null;
+
+  function masterGain(scene, ctx) {
+    if (!ctx.arcadeMaster) {
+      const gain = ctx.createGain();
+      gain.gain.value = C.sounds.volume;
+      gain.connect(scene.sound.destination || ctx.destination);
+      ctx.arcadeMaster = gain;
+    }
+    return ctx.arcadeMaster;
+  }
+
+  function playNote(ctx, out, note, now, volumeScale) {
+    const start = now + (note.delay || 0);
+    const duration = note.duration || 0.1;
+    const peak = Math.max(0.0001, (note.volume ?? 0.3) * volumeScale);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(peak, start + Math.min(0.01, duration / 4));
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    gain.connect(out);
+
+    let source;
+    if (note.noise) {
+      if (!noiseBuffer || noiseBuffer.sampleRate !== ctx.sampleRate) {
+        noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+        const data = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      }
+      source = ctx.createBufferSource();
+      source.buffer = noiseBuffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = note.filter || 1000;
+      source.connect(filter).connect(gain);
+    } else {
+      source = ctx.createOscillator();
+      source.type = note.type || 'sine';
+      source.frequency.setValueAtTime(note.freq || 440, start);
+      if (note.to) source.frequency.exponentialRampToValueAtTime(note.to, start + duration);
+      source.connect(gain);
+    }
+    source.start(start);
+    source.stop(start + duration + 0.02);
+    source.onended = () => gain.disconnect();
+  }
+
+  const sfx = {
+    muted: !!store.get('muted', C.sounds.startMuted),
+    lastPlayed: {},
+
+    setMuted(value) {
+      this.muted = value;
+      store.set('muted', value);
+    },
+
+    // key: sounds with the same key don't stack when several fire at once (a chain of merges).
+    // volume: scales every note (each game has its own level).
+    play(scene, notes, key, volume = 1) {
+      if (this.muted || !notes) return;
+      const ctx = scene.sound && scene.sound.context;
+      if (!ctx) return; // this browser has no Web Audio: stay silent
+      if (ctx.state !== 'running') {
+        // Browsers keep audio off until the first tap or click; skip this one sound.
+        ctx.resume().catch(() => {});
+        return;
+      }
+      const now = ctx.currentTime;
+      if (key) {
+        if (now - (this.lastPlayed[key] ?? -1) < 0.04) return;
+        this.lastPlayed[key] = now;
+      }
+      const out = masterGain(scene, ctx);
+      for (const note of notes) playNote(ctx, out, note, now, volume);
+    },
+  };
+
   // ---------- UI helpers ----------
   function text(scene, x, y, value, size, color, options = {}) {
     return scene.add
@@ -278,7 +369,10 @@ const Arcade = (() => {
 
     zone.on('pointerover', () => { hover = true; draw(); });
     zone.on('pointerout', () => { hover = false; draw(); });
-    zone.on('pointerup', () => onClick());
+    zone.on('pointerup', () => {
+      sfx.play(scene, C.sounds.click, 'click');
+      onClick();
+    });
     draw();
 
     return {
@@ -286,6 +380,55 @@ const Arcade = (() => {
       setLabel(value) { t.setText(value); return this; },
       setSelected(value) { selected = value; draw(); return this; },
       setDepth(depth) { g.setDepth(depth); t.setDepth(depth + 1); zone.setDepth(depth + 1); return this; },
+    };
+  }
+
+  // A speaker button that turns all arcade sound on or off. The choice is remembered.
+  function muteButton(scene, x, y) {
+    const w = 64;
+    const h = 48;
+    const g = scene.add.graphics();
+    const zone = scene.add.zone(x, y, w, h).setInteractive({ useHandCursor: true });
+    let hover = false;
+
+    function draw() {
+      const white = 0xfff6fb;
+      g.clear();
+      g.fillStyle(hover ? C.colors.secondaryHover : C.colors.secondary, 1);
+      g.fillRoundedRect(x - w / 2, y - h / 2, w, h, 16);
+      const ix = x - 10;
+      g.fillStyle(white, 1);
+      g.fillRect(ix - 9, y - 6, 9, 12);
+      g.fillPoints([
+        { x: ix, y: y - 6 }, { x: ix + 10, y: y - 14 },
+        { x: ix + 10, y: y + 14 }, { x: ix, y: y + 6 },
+      ], true);
+      g.lineStyle(4, white, 1);
+      if (sfx.muted) {
+        g.lineBetween(ix + 16, y - 7, ix + 28, y + 7);
+        g.lineBetween(ix + 16, y + 7, ix + 28, y - 7);
+      } else {
+        g.beginPath();
+        g.arc(ix + 11, y, 8, -0.9, 0.9);
+        g.strokePath();
+        g.beginPath();
+        g.arc(ix + 11, y, 16, -0.9, 0.9);
+        g.strokePath();
+      }
+    }
+
+    zone.on('pointerover', () => { hover = true; draw(); });
+    zone.on('pointerout', () => { hover = false; draw(); });
+    zone.on('pointerup', () => {
+      sfx.setMuted(!sfx.muted);
+      draw();
+      sfx.play(scene, C.sounds.click, 'click');
+    });
+    draw();
+
+    return {
+      zone,
+      setDepth(depth) { g.setDepth(depth); zone.setDepth(depth + 1); return this; },
     };
   }
 
@@ -297,6 +440,7 @@ const Arcade = (() => {
 
     create() {
       const W = C.width;
+      muteButton(this, W - 48, 44);
       text(this, W / 2, 170, C.title, 64);
       text(this, W / 2, 245, 'Pick a game', 32, C.colors.muted, { bold: false });
 
@@ -319,7 +463,8 @@ const Arcade = (() => {
   }
 
   function boot(parentId) {
-    return new Phaser.Game({
+    // Kept on Arcade.game so you can poke at it from the browser console while testing.
+    Arcade.game = new Phaser.Game({
       type: Phaser.AUTO,
       parent: parentId,
       backgroundColor: C.colors.background,
@@ -335,6 +480,7 @@ const Arcade = (() => {
       },
       scene: [MenuScene, ...scenes],
     });
+    return Arcade.game;
   }
 
   return {
@@ -349,7 +495,8 @@ const Arcade = (() => {
     formatScore,
     resultLine,
     copyText,
-    ui: { text, button },
+    sfx,
+    ui: { text, button, muteButton },
     registerGame,
     boot,
   };
