@@ -17,17 +17,78 @@ const CONFIG = {
   },
 
   // 8 tiers, smallest first. points = score for merging two of this tier.
-  // Placeholder circles for now; real emote art goes in assets/ later.
+  // Sizes and points are the same in every skin; how they look is set in skins below.
   tiers: [
-    { radius: 26, color: '#ff9ecb', points: 2 },
-    { radius: 36, color: '#ffd166', points: 5 },
-    { radius: 48, color: '#7ee081', points: 10 },
-    { radius: 60, color: '#5ec8ff', points: 20 },
-    { radius: 74, color: '#b28dff', points: 40 },
-    { radius: 90, color: '#ff8c42', points: 80 },
-    { radius: 108, color: '#2ec4b6', points: 160 },
-    { radius: 130, color: '#ffe14d', points: 0 }, // tier 8 can't merge up; see bigBonus
+    { radius: 26, points: 2 },
+    { radius: 36, points: 5 },
+    { radius: 48, points: 10 },
+    { radius: 60, points: 20 },
+    { radius: 74, points: 40 },
+    { radius: 90, points: 80 },
+    { radius: 108, points: 160 },
+    { radius: 130, points: 0 }, // tier 8 can't merge up; see bigBonus
   ],
+
+  // ---------- Skins: how the game looks and sounds. Cosmetic only. ----------
+  // Each skin's key (tink, coffee-counter, bar-night) is also its folder name for art and sounds:
+  //   assets/skins/<key>/tier1.png ... tier8.png   square, transparent background, 256 x 256 or bigger
+  //   assets/skins/<key>/<sound file names below>  any short .mp3, .ogg or .wav
+  // Any file that isn't there falls back to the placeholder shape or the built-in sound.
+  //   name:       shown in the skin picker and the copied result
+  //   background: the color behind the jar
+  //   label:      what the placeholder shapes show: 'number' (the tier) or 'name'
+  //   tiers:      8 names and placeholder colors, smallest first (colors also tint the pixel bursts)
+  defaultSkin: 'tink',
+  skins: {
+    tink: {
+      name: 'Tink',
+      background: '#1a1030',
+      label: 'number',
+      tiers: [
+        { name: 'Emote 1', color: '#ff9ecb' },
+        { name: 'Emote 2', color: '#ffd166' },
+        { name: 'Emote 3', color: '#7ee081' },
+        { name: 'Emote 4', color: '#5ec8ff' },
+        { name: 'Emote 5', color: '#b28dff' },
+        { name: 'Emote 6', color: '#ff8c42' },
+        { name: 'Emote 7', color: '#2ec4b6' },
+        { name: 'Emote 8', color: '#ffe14d' },
+      ],
+      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3' },
+    },
+    'coffee-counter': {
+      name: 'Coffee Counter',
+      background: '#24170f',
+      label: 'name',
+      tiers: [
+        { name: 'Coffee bean', color: '#a8714a' },
+        { name: 'Powder scoop', color: '#f3e6cc' },
+        { name: 'Small iced cup', color: '#a8dcef' },
+        { name: 'Large iced cup', color: '#4fa3d1' },
+        { name: 'Shaker bottle', color: '#f07c5a' },
+        { name: 'Cold brew tub', color: '#3f8f7a' },
+        { name: 'Coffee bag', color: '#d9a54a' },
+        { name: "Tink's signature tub", color: '#ff5fa2' },
+      ],
+      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3' },
+    },
+    'bar-night': {
+      name: 'Bar Night',
+      background: '#0d1424',
+      label: 'name',
+      tiers: [
+        { name: 'Ice cube', color: '#d6f3ff' },
+        { name: 'Shot glass', color: '#7fd1c7' },
+        { name: 'Wine glass', color: '#c0395e' },
+        { name: 'Pint glass', color: '#f0a030' },
+        { name: 'Wine bottle', color: '#4f9a5c' },
+        { name: 'Champagne bottle', color: '#f5dd7a' },
+        { name: 'Crate', color: '#a87445' },
+        { name: 'Keg', color: '#b8c2cc' },
+      ],
+      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3' },
+    },
+  },
   bigBonus: 1000,       // two tier-8 items touching: both vanish, plus this
 
   spawnTiers: [1, 2, 3], // new drops are picked at random from these
@@ -59,9 +120,11 @@ const CONFIG = {
     bonusLifeMs: 1100,
   },
 
-  // Sounds, made on the fly (the note fields are explained above Arcade.sfx in arcade.js).
+  // Built-in sounds, made on the fly (the note fields are explained above Arcade.sfx in arcade.js).
+  // A skin's sound file replaces the matching one here.
   sounds: {
     volume: 1, // this game's level, 0 to 1, on top of the arcade's master volume
+    mergeRateStep: 0.07, // with a merge sound file: each tier plays it this much faster (and higher)
     drop: [
       { noise: true, filter: 1400, duration: 0.06, volume: 0.25 },
       { freq: 300, to: 160, duration: 0.09, volume: 0.25 },
@@ -128,8 +191,152 @@ function buildRules(mode, difficultyId, period) {
   };
 }
 
-function playSound(scene, notes, key) {
-  Arcade.sfx.play(scene, notes, key, CONFIG.sounds.volume);
+// ---------- Skins ----------
+function skinIdOrDefault(id) {
+  return CONFIG.skins[id] ? id : CONFIG.defaultSkin;
+}
+
+function tierTextureKey(skinId, tier) {
+  return `${CONFIG.id}-${skinId}-tier-${tier}`;
+}
+
+// The loader key for one of a skin's files (art or sound).
+function skinFileKey(skinId, file) {
+  return `${CONFIG.id}-${skinId}-file-${file}`;
+}
+
+function tierArtFile(tier) {
+  return `tier${tier}.png`;
+}
+
+// Tries to load every skin's art and sound files, once per page load. Files that
+// aren't there just fail quietly (the browser console shows them as "not found").
+const triedSkinFiles = new Set();
+function loadSkinFiles(scene) {
+  for (const [skinId, skin] of Object.entries(CONFIG.skins)) {
+    const base = `assets/skins/${skinId}/`;
+    CONFIG.tiers.forEach((t, i) => {
+      const file = tierArtFile(i + 1);
+      const key = skinFileKey(skinId, file);
+      if (triedSkinFiles.has(key)) return;
+      triedSkinFiles.add(key);
+      scene.load.image(key, base + file);
+    });
+    for (const file of Object.values(skin.sounds)) {
+      const key = skinFileKey(skinId, file);
+      if (!file || triedSkinFiles.has(key)) continue;
+      triedSkinFiles.add(key);
+      scene.load.audio(key, base + file);
+    }
+  }
+}
+
+// Plays one of the skin's sounds: its file if one loaded, otherwise the built-in notes.
+function playSkinSound(scene, skinId, name, notes, rate = 1) {
+  const file = CONFIG.skins[skinId].sounds[name];
+  const key = file && skinFileKey(skinId, file);
+  if (key && scene.cache.audio.exists(key)) {
+    Arcade.sfx.playFile(scene, key, name, CONFIG.sounds.volume, rate);
+  } else {
+    Arcade.sfx.play(scene, notes, name, CONFIG.sounds.volume);
+  }
+}
+
+// Makes one texture per tier for a skin, sized to the tier: the skin's art if
+// it loaded, otherwise a placeholder shape. Runs after loadSkinFiles has finished.
+function ensureSkinTextures(scene, skinId) {
+  const skin = CONFIG.skins[skinId];
+  CONFIG.tiers.forEach((t, i) => {
+    const tier = i + 1;
+    const key = tierTextureKey(skinId, tier);
+    if (scene.textures.exists(key)) return;
+    const size = t.radius * 2;
+    const tex = scene.textures.createCanvas(key, size, size);
+    const ctx = tex.getContext();
+    const art = skinFileKey(skinId, tierArtFile(tier));
+    if (scene.textures.exists(art)) {
+      drawArt(ctx, scene.textures.get(art).getSourceImage(), size);
+    } else {
+      drawPlaceholder(ctx, t.radius, tier, skin);
+    }
+    tex.refresh();
+  });
+}
+
+// Fits the image inside the square, keeping its shape.
+function drawArt(ctx, img, size) {
+  const scale = Math.min(size / img.width, size / img.height);
+  const w = img.width * scale;
+  const h = img.height * scale;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+}
+
+// A colored circle with a shine, labeled with the tier number or the tier's name.
+function drawPlaceholder(ctx, r, tier, skin) {
+  const color = skin.tiers[tier - 1].color;
+  ctx.beginPath();
+  ctx.arc(r, r, r - 3, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(r * 0.62, r * 0.58, r * 0.2, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.fill();
+
+  ctx.fillStyle = isLight(color) ? '#2a1640' : '#fff6fb';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (skin.label === 'number') {
+    ctx.font = `bold ${Math.round(r * 0.95)}px sans-serif`;
+    ctx.fillText(String(tier), r, r * 1.06);
+    return;
+  }
+  const { size, lines } = fitLabel(ctx, skin.tiers[tier - 1].name, r * 1.6, 3, Math.round(r * 0.42), 10);
+  ctx.font = `bold ${size}px sans-serif`;
+  const lineHeight = size * 1.1;
+  lines.forEach((line, n) => {
+    ctx.fillText(line, r, r + (n - (lines.length - 1) / 2) * lineHeight);
+  });
+}
+
+// Picks the biggest font size (startSize down to minSize) at which the text wraps
+// into maxLines or fewer, each no wider than maxWidth.
+function fitLabel(ctx, text, maxWidth, maxLines, startSize, minSize) {
+  for (let size = startSize; size > minSize; size--) {
+    ctx.font = `bold ${size}px sans-serif`;
+    const lines = wrapWords(ctx, text, maxWidth);
+    if (lines.length <= maxLines && lines.every((l) => ctx.measureText(l).width <= maxWidth)) {
+      return { size, lines };
+    }
+  }
+  ctx.font = `bold ${minSize}px sans-serif`;
+  return { size: minSize, lines: wrapWords(ctx, text, maxWidth) };
+}
+
+function wrapWords(ctx, text, maxWidth) {
+  const lines = [];
+  let line = '';
+  for (const word of text.split(' ')) {
+    const longer = line ? line + ' ' + word : word;
+    if (line && ctx.measureText(longer).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = longer;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+// True for pale colors, which need dark text on top.
+function isLight(hex) {
+  const c = Phaser.Display.Color.HexStringToColor(hex);
+  return 0.299 * c.red + 0.587 * c.green + 0.114 * c.blue > 150;
 }
 
 // A bubbly pop: a quick upward slide, then a soft higher note.
@@ -142,40 +349,6 @@ function mergeSound(tier) {
   ];
 }
 
-function tierTextureKey(tier) {
-  return `${CONFIG.id}-tier-${tier}`;
-}
-
-// Draws the placeholder circles once. When real art arrives, load images with
-// the same texture keys in preload() and this skips them.
-function ensureTierTextures(scene) {
-  CONFIG.tiers.forEach((t, i) => {
-    const tier = i + 1;
-    const key = tierTextureKey(tier);
-    if (scene.textures.exists(key)) return;
-    const r = t.radius;
-    const tex = scene.textures.createCanvas(key, r * 2, r * 2);
-    const ctx = tex.getContext();
-    ctx.beginPath();
-    ctx.arc(r, r, r - 3, 0, Math.PI * 2);
-    ctx.fillStyle = t.color;
-    ctx.fill();
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(r * 0.62, r * 0.58, r * 0.2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.fill();
-    ctx.fillStyle = '#2a1640';
-    ctx.font = `bold ${Math.round(r * 0.95)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(tier), r, r * 1.06);
-    tex.refresh();
-  });
-}
-
 function bestKey(period, difficultyId) {
   return `${CONFIG.id}:${period.key}:${difficultyId}`;
 }
@@ -186,6 +359,10 @@ class EmoteJarStart extends Phaser.Scene {
     super('EmoteJarStart');
   }
 
+  preload() {
+    loadSkinFiles(this);
+  }
+
   create() {
     const W = Arcade.config.width;
     const col = Arcade.config.colors;
@@ -193,46 +370,81 @@ class EmoteJarStart extends Phaser.Scene {
     const last = Arcade.store.get(CONFIG.id + ':last', {});
     this.mode = ['free', 'daily', 'weekly'].includes(last.mode) ? last.mode : 'free';
     this.difficultyId = Arcade.config.difficulties[last.difficulty] ? last.difficulty : 'normal';
+    this.skinId = skinIdOrDefault(last.skin);
+    this.skinIds = Object.keys(CONFIG.skins);
+    this.skinIds.forEach((id) => ensureSkinTextures(this, id));
 
     ui.muteButton(this, W - 48, 44);
-    ui.text(this, W / 2, 110, CONFIG.title, 56);
-    ui.text(this, W / 2, 172, 'Drop. Match two. Merge.', 30, col.muted, { bold: false });
+    ui.text(this, W / 2, 95, CONFIG.title, 56);
+    ui.text(this, W / 2, 152, 'Drop. Match two. Merge.', 30, col.muted, { bold: false });
 
-    ui.text(this, W / 2, 255, 'MODE', 26, col.muted);
+    ui.text(this, W / 2, 215, 'MODE', 26, col.muted);
     this.modeButtons = {};
     Arcade.config.modes.forEach((m, i) => {
-      this.modeButtons[m.id] = ui.button(this, 108 + i * 210, 315, 190, 76, m.label,
-        () => this.select(m.id, this.difficultyId), { kind: 'toggle', fontSize: 30 });
+      this.modeButtons[m.id] = ui.button(this, 108 + i * 210, 268, 190, 70, m.label,
+        () => this.select(m.id, this.difficultyId, this.skinId), { kind: 'toggle', fontSize: 30 });
     });
 
-    ui.text(this, W / 2, 410, 'DIFFICULTY', 26, col.muted);
+    ui.text(this, W / 2, 340, 'DIFFICULTY', 26, col.muted);
     this.difficultyButtons = {};
     Arcade.config.difficultyOrder.forEach((id, i) => {
-      this.difficultyButtons[id] = ui.button(this, 108 + i * 210, 470, 190, 76, Arcade.difficulty(id).label,
-        () => this.select(this.mode, id), { kind: 'toggle', fontSize: 30 });
+      this.difficultyButtons[id] = ui.button(this, 108 + i * 210, 393, 190, 70, Arcade.difficulty(id).label,
+        () => this.select(this.mode, id, this.skinId), { kind: 'toggle', fontSize: 30 });
     });
 
-    this.info = ui.text(this, W / 2, 590, '', 30, col.text, { bold: false, wrap: 560 });
-    this.bestText = ui.text(this, W / 2, 670, '', 30, col.muted);
+    // Skin picker: arrows either side of the name, and the 8 tiers underneath.
+    ui.text(this, W / 2, 465, 'SKIN', 26, col.muted);
+    ui.button(this, 58, 518, 90, 70, '‹', () => this.cycleSkin(-1), { kind: 'secondary', fontSize: 48 });
+    ui.button(this, W - 58, 518, 90, 70, '›', () => this.cycleSkin(1), { kind: 'secondary', fontSize: 48 });
+    this.skinName = ui.text(this, W / 2, 518, '', 34);
+    this.skinPreview = CONFIG.tiers.map((t, i) => this.add.image(0, 590, tierTextureKey(this.skinId, i + 1)));
 
-    ui.button(this, W / 2, 770, 380, 100, 'Play', () => {
-      this.scene.start('EmoteJarPlay', { mode: this.mode, difficulty: this.difficultyId });
+    this.info = ui.text(this, W / 2, 672, '', 28, col.text, { bold: false, wrap: 560 });
+    this.bestText = ui.text(this, W / 2, 742, '', 28, col.muted);
+
+    ui.button(this, W / 2, 815, 380, 90, 'Play', () => {
+      this.scene.start('EmoteJarPlay', { mode: this.mode, difficulty: this.difficultyId, skin: this.skinId });
     }, { fontSize: 44 });
-    ui.button(this, W / 2, 880, 260, 70, 'Back to arcade', () => this.scene.start('ArcadeMenu'),
+    ui.button(this, W / 2, 906, 260, 60, 'Back to arcade', () => this.scene.start('ArcadeMenu'),
       { kind: 'secondary', fontSize: 28 });
 
-    ui.text(this, W / 2, 960, 'Aim with mouse, touch or arrows. Click, tap or Space to drop.', 24, col.muted,
-      { bold: false, wrap: 580 });
+    ui.text(this, W / 2, 968, 'Aim with mouse, touch or arrows. Click, tap or Space to drop.', 22, col.muted,
+      { bold: false, wrap: 600 });
 
-    this.select(this.mode, this.difficultyId);
+    this.select(this.mode, this.difficultyId, this.skinId);
   }
 
-  select(mode, difficultyId) {
+  cycleSkin(step) {
+    const i = this.skinIds.indexOf(this.skinId);
+    const next = this.skinIds[(i + step + this.skinIds.length) % this.skinIds.length];
+    this.select(this.mode, this.difficultyId, next);
+  }
+
+  // Shows the skin's 8 tiers in a row, growing from small to big like in the jar.
+  showSkinPreview() {
+    const W = Arcade.config.width;
+    const sizes = this.skinPreview.map((img, i) => 40 + i * 5);
+    const gap = 8;
+    const total = sizes.reduce((sum, s) => sum + s, 0) + gap * (sizes.length - 1);
+    let x = W / 2 - total / 2;
+    this.skinPreview.forEach((img, i) => {
+      img.setTexture(tierTextureKey(this.skinId, i + 1));
+      img.setDisplaySize(sizes[i], sizes[i]);
+      img.x = x + sizes[i] / 2;
+      x += sizes[i] + gap;
+    });
+  }
+
+  select(mode, difficultyId, skinId) {
     this.mode = mode;
     this.difficultyId = difficultyId;
-    Arcade.store.set(CONFIG.id + ':last', { mode, difficulty: difficultyId });
+    this.skinId = skinId;
+    Arcade.store.set(CONFIG.id + ':last', { mode, difficulty: difficultyId, skin: skinId });
     for (const id in this.modeButtons) this.modeButtons[id].setSelected(id === mode);
     for (const id in this.difficultyButtons) this.difficultyButtons[id].setSelected(id === difficultyId);
+    this.skinName.setText(CONFIG.skins[skinId].name);
+    this.cameras.main.setBackgroundColor(CONFIG.skins[skinId].background);
+    this.showSkinPreview();
 
     const period = Arcade.getPeriod(CONFIG.id, mode);
     if (mode === 'daily') {
@@ -257,6 +469,8 @@ class EmoteJarPlay extends Phaser.Scene {
   init(data) {
     this.mode = data.mode || 'free';
     this.difficultyId = data.difficulty || 'normal';
+    this.skinId = skinIdOrDefault(data.skin);
+    this.skin = CONFIG.skins[this.skinId];
   }
 
   create() {
@@ -275,7 +489,8 @@ class EmoteJarPlay extends Phaser.Scene {
     this.isOver = false;
     this.aiming = false;
 
-    ensureTierTextures(this);
+    ensureSkinTextures(this, this.skinId);
+    this.cameras.main.setBackgroundColor(this.skin.background);
 
     // Jar edges.
     this.jarLeft = W / 2 - this.rules.jarWidth / 2;
@@ -288,7 +503,7 @@ class EmoteJarPlay extends Phaser.Scene {
 
     // Dropper: a guide line and the item waiting to drop.
     this.guide = this.add.graphics();
-    this.held = this.add.image(W / 2, CONFIG.dropperY, tierTextureKey(1));
+    this.held = this.add.image(W / 2, CONFIG.dropperY, this.tierKey(1));
     this.current = this.rollTier();
     this.next = this.rollTier();
     this.dropX = W / 2;
@@ -382,7 +597,7 @@ class EmoteJarPlay extends Phaser.Scene {
     this.bestText = ui.text(this, 350, 66, Arcade.formatScore(this.best), 44, col.text, left);
 
     ui.text(this, W - 56, 22, 'NEXT', 24, col.muted);
-    this.nextPreview = this.add.image(W - 56, 68, tierTextureKey(1));
+    this.nextPreview = this.add.image(W - 56, 68, this.tierKey(1));
   }
 
   setUpInput() {
@@ -421,14 +636,27 @@ class EmoteJarPlay extends Phaser.Scene {
     return CONFIG.tiers[tier - 1].radius;
   }
 
+  // ---------- This round's skin ----------
+  tierKey(tier) {
+    return tierTextureKey(this.skinId, tier);
+  }
+
+  colorOf(tier) {
+    return this.skin.tiers[tier - 1].color;
+  }
+
+  playEffect(name, notes, rate) {
+    playSkinSound(this, this.skinId, name, notes, rate);
+  }
+
   setDropX(x) {
     const r = this.radiusOf(this.current);
     this.dropX = Phaser.Math.Clamp(x, this.jarLeft + r + 2, this.jarRight - r - 2);
   }
 
   refreshDropper() {
-    this.held.setTexture(tierTextureKey(this.current));
-    this.nextPreview.setTexture(tierTextureKey(this.next));
+    this.held.setTexture(this.tierKey(this.current));
+    this.nextPreview.setTexture(this.tierKey(this.next));
     this.nextPreview.setScale(Math.min(1, 56 / (this.radiusOf(this.next) * 2)));
     this.setDropX(this.dropX);
   }
@@ -437,7 +665,7 @@ class EmoteJarPlay extends Phaser.Scene {
     if (this.isOver || this.time.now - this.lastDropAt < this.rules.cooldownMs) return;
     this.lastDropAt = this.time.now;
     this.createItem(this.current, this.dropX, CONFIG.dropperY);
-    playSound(this, CONFIG.sounds.drop, 'drop');
+    this.playEffect('drop', CONFIG.sounds.drop);
     this.current = this.next;
     this.next = this.rollTier();
     this.refreshDropper();
@@ -445,7 +673,7 @@ class EmoteJarPlay extends Phaser.Scene {
 
   createItem(tier, x, y) {
     const p = CONFIG.physics;
-    const item = this.matter.add.image(x, y, tierTextureKey(tier), null, {
+    const item = this.matter.add.image(x, y, this.tierKey(tier), null, {
       shape: { type: 'circle', radius: this.radiusOf(tier) },
       restitution: this.rules.restitution,
       friction: this.rules.friction,
@@ -480,17 +708,17 @@ class EmoteJarPlay extends Phaser.Scene {
 
       if (tier < CONFIG.tiers.length) {
         this.createItem(tier + 1, x, y);
-        this.addScore(CONFIG.tiers[tier - 1].points, x, y, CONFIG.tiers[tier].color);
-        playSound(this, mergeSound(tier), 'merge');
+        this.addScore(CONFIG.tiers[tier - 1].points, x, y, this.colorOf(tier + 1));
+        this.playEffect('merge', mergeSound(tier), 1 + CONFIG.sounds.mergeRateStep * (tier - 1));
         this.mergeBurst(tier + 1, x, y);
       } else {
         // Two top-tier items: both vanish with a big bonus.
-        this.addScore(CONFIG.bigBonus, x, y, CONFIG.tiers[tier - 1].color, true);
-        playSound(this, CONFIG.sounds.bonus, 'bonus');
+        this.addScore(CONFIG.bigBonus, x, y, this.colorOf(tier), true);
+        this.playEffect('bonus', CONFIG.sounds.bonus);
         const fx = CONFIG.effects;
         Arcade.fx.pixelBurst(this, x, y, {
           count: fx.bonusPixels,
-          colors: CONFIG.tiers.map((t) => t.color).concat('#ffffff'),
+          colors: this.skin.tiers.map((t) => t.color).concat('#ffffff'),
           speedMin: fx.bonusSpeed[0],
           speedMax: fx.bonusSpeed[1],
           lifeMs: fx.bonusLifeMs,
@@ -507,7 +735,7 @@ class EmoteJarPlay extends Phaser.Scene {
     if (newTier < fx.burstFromTier) return;
     Arcade.fx.pixelBurst(this, x, y, {
       count: fx.burstPixels + (newTier - fx.burstFromTier) * fx.burstPixelsPerTier,
-      colors: [CONFIG.tiers[newTier - 1].color, '#ffffff'],
+      colors: [this.colorOf(newTier), '#ffffff'],
       speedMin: fx.burstSpeed[0],
       speedMax: fx.burstSpeed[1],
       lifeMs: fx.burstLifeMs,
@@ -574,14 +802,15 @@ class EmoteJarPlay extends Phaser.Scene {
     // this.best is the best from before this round started.
     const isNewBest = this.score > this.best;
     const best = Math.max(this.best, this.score);
-    playSound(this, isNewBest ? CONFIG.sounds.newBest : CONFIG.sounds.gameOver, 'end');
+    if (isNewBest) this.playEffect('newBest', CONFIG.sounds.newBest);
+    else this.playEffect('gameOver', CONFIG.sounds.gameOver);
 
     const W = Arcade.config.width;
     const H = Arcade.config.height;
     const col = Arcade.config.colors;
     const ui = Arcade.ui;
     const depth = 100;
-    const line = Arcade.resultLine(CONFIG.title, this.period, this.difficultyId, this.score);
+    const line = Arcade.resultLine(CONFIG.title, this.period, this.difficultyId, this.score, this.skin.name);
 
     this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.6).setDepth(depth);
     const panel = this.add.graphics().setDepth(depth);
@@ -596,7 +825,7 @@ class EmoteJarPlay extends Phaser.Scene {
     ui.text(this, W / 2, 550, line, 22, col.muted, { bold: false, wrap: 500 }).setDepth(depth + 1);
 
     ui.button(this, W / 2, 640, 400, 90, 'Restart',
-      () => this.scene.restart({ mode: this.mode, difficulty: this.difficultyId }), { fontSize: 40 }).setDepth(depth + 2);
+      () => this.scene.restart({ mode: this.mode, difficulty: this.difficultyId, skin: this.skinId }), { fontSize: 40 }).setDepth(depth + 2);
     const copy = ui.button(this, W / 2, 740, 400, 76, 'Copy result', async () => {
       const ok = await Arcade.copyText(line);
       copy.setLabel(ok ? 'Copied' : "Couldn't copy");

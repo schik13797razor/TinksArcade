@@ -9,7 +9,7 @@
 //   Arcade.getPeriod(game, mode)  the seed and label for Free Play, Daily or Weekly
 //   Arcade.difficulty(id)         difficulty presets (Easy, Normal, Hard)
 //   Arcade.resultLine / copyText  the short score line people paste into Discord
-//   Arcade.sfx.play               short sound effects, with a remembered mute
+//   Arcade.sfx.play / playFile    short sound effects (made on the fly, or from a file), with a remembered mute
 //   Arcade.fx.pixelBurst          a little pixel explosion for big moments
 //   Arcade.ui.button / ui.text    simple buttons and text in the arcade style
 
@@ -202,8 +202,13 @@ const Arcade = (() => {
   }
 
   // e.g. "Tink's Emote Jar · Week 12 · Hard · 4,820"
-  function resultLine(gameTitle, period, difficultyId, score) {
-    return `${gameTitle} · ${period.label} · ${difficulty(difficultyId).label} · ${formatScore(score)}`;
+  // variant (optional): shown after the title, e.g. a skin name:
+  //   "Tink's Emote Jar · Bar Night · Week 12 · Hard · 4,820"
+  function resultLine(gameTitle, period, difficultyId, score, variant) {
+    const parts = [gameTitle];
+    if (variant) parts.push(variant);
+    parts.push(period.label, difficulty(difficultyId).label, formatScore(score));
+    return parts.join(' · ');
   }
 
   // Copies text to the clipboard. Resolves true if it worked.
@@ -294,6 +299,16 @@ const Arcade = (() => {
       store.set('muted', value);
     },
 
+    // True if a sound with this key played in the last 40 ms (and marks it as playing now).
+    recentlyPlayed(key) {
+      if (!key) return false;
+      const now = performance.now();
+      if (now - (this.lastPlayed[key] ?? -Infinity) < 40) return true;
+      this.lastPlayed[key] = now;
+      return false;
+    },
+
+    // Plays a made-on-the-fly sound (a list of notes).
     // key: sounds with the same key don't stack when several fire at once (a chain of merges).
     // volume: scales every note (each game has its own level).
     play(scene, notes, key, volume = 1) {
@@ -305,13 +320,22 @@ const Arcade = (() => {
         ctx.resume().catch(() => {});
         return;
       }
-      const now = ctx.currentTime;
-      if (key) {
-        if (now - (this.lastPlayed[key] ?? -1) < 0.04) return;
-        this.lastPlayed[key] = now;
-      }
+      if (this.recentlyPlayed(key)) return;
       const out = masterGain(scene, ctx);
-      for (const note of notes) playNote(ctx, out, note, now, volume);
+      for (const note of notes) playNote(ctx, out, note, ctx.currentTime, volume);
+    },
+
+    // Plays a sound file the scene has already loaded (cacheKey is its loader key).
+    // rate: playback speed, which also raises the pitch (1 = normal).
+    playFile(scene, cacheKey, key, volume = 1, rate = 1) {
+      if (this.muted) return;
+      const ctx = scene.sound && scene.sound.context;
+      if (ctx && ctx.state !== 'running') {
+        ctx.resume().catch(() => {});
+        return;
+      }
+      if (this.recentlyPlayed(key)) return;
+      scene.sound.play(cacheKey, { volume: C.sounds.volume * volume, rate });
     },
   };
 
