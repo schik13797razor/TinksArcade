@@ -21,6 +21,11 @@
 // Other sizes get stretched to fit. A soft vignette and a shade behind the play area are
 // always added on top, so items stay readable on any art.
 //
+// Ambient life: each skin also has a few small background animations (see "ambient" in
+// each skin below): rain and a flickering lamp for Tink, steam for the Coffee Shop, candle
+// flicker for Fine Dining. They're placed on the code-drawn art, so a layer replaced by a
+// PNG has none, and the "Reduce motion" setting turns them all off.
+//
 // Uses CONFIG and skinFileKey from game.js, so index.html loads this file after game.js.
 
 const SkinScenes = (() => {
@@ -332,6 +337,21 @@ const SkinScenes = (() => {
       ctx.strokeRect(4, 4, w - 8, h - 8);
     },
 
+    ambient: {
+      // Slow rain on the window, and the hanging lamp's glow breathing gently.
+      jar(scene) {
+        rain(scene, { x: 72, y: 260, w: 210, h: 230 });
+        flicker(scene, [
+          { x: 500, y: 200, radius: 300, color: 0xffb36b, alpha: 0.16, amount: 0.3, speed: 0.7 },
+          { x: 500, y: 186, radius: 60, color: 0xffd090, alpha: 0.28, amount: 0.25, speed: 0.9 },
+        ]);
+      },
+      // The lamp's warm light over the table.
+      table(scene) {
+        flicker(scene, [{ x: 420, y: 330, radius: 520, color: 0xffb36b, alpha: 0.08, amount: 0.35, speed: 0.7 }]);
+      },
+    },
+
     // A braided rug under the table, on a dark wood floor.
     tableSurround(ctx, w, h) {
       ctx.fillStyle = '#22160f';
@@ -359,6 +379,7 @@ const SkinScenes = (() => {
   // ======================================================================
   // Coffee Shop: exposed brick, a chalkboard menu, pendant lights
   // ======================================================================
+  const COFFEE_CUP = { x: 60, fromBottom: 58 }; // where the cup sits on the table
   const coffeeShop = {
     // Where sponsor.png goes, if it's there: on the brick wall, seen through the upper
     // left of the jar (opposite the chalkboard), where items only reach late in a run.
@@ -489,9 +510,37 @@ const SkinScenes = (() => {
         ctx.arc(x, y, rad, 0.3, Math.PI * 1.85);
         ctx.stroke();
       }
+      // A cup of coffee on its saucer in the near corner (it steams: see ambient below).
+      const cx = COFFEE_CUP.x;
+      const cy = h - COFFEE_CUP.fromBottom;
+      const circle = (x, y, r, color) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      circle(cx + 3, cy + 4, 37, 'rgba(0,0,0,0.3)');
+      circle(cx, cy, 36, '#d9cfbd');
+      ctx.fillStyle = '#efe7d8';
+      rrect(ctx, cx + 18, cy - 6, 18, 12, 5);
+      ctx.fill();
+      circle(cx, cy, 23, '#efe7d8');
+      circle(cx, cy, 17, '#5a3420');
+      circle(cx - 4, cy - 4, 7, 'rgba(225,190,150,0.45)');
       ctx.strokeStyle = linear(ctx, 0, 0, w, h, [[0, '#9aa2a6'], [0.5, '#5a6266'], [1, '#8a9296']]);
       ctx.lineWidth = 10;
       ctx.strokeRect(5, 5, w - 10, h - 10);
+    },
+
+    ambient: {
+      // Steam from three of the mugs on the shelf behind the jar.
+      jar(scene) {
+        for (const x of [74, 198, 260]) steam(scene, x, 612);
+      },
+      // Steam from the cup in the table's near corner.
+      table(scene, t) {
+        steam(scene, t.left + COFFEE_CUP.x, t.bottom - COFFEE_CUP.fromBottom - 16);
+      },
     },
 
     // A checkered tile floor.
@@ -680,6 +729,17 @@ const SkinScenes = (() => {
       ctx.strokeRect(3, 3, w - 6, h - 6);
     },
 
+    ambient: {
+      // The two wall candles flicker: a quick, uneven glow, and the flame itself.
+      jar(scene) {
+        flicker(scene, [92, 544].flatMap((x) => candle(x, 124, 250)));
+      },
+      // The candles in the table's far corners.
+      table(scene, t) {
+        flicker(scene, [t.left + 44, t.right - 44].flatMap((x) => candle(x, t.top + 44, 150)));
+      },
+    },
+
     // A deep red carpet, with the tablecloth hanging over the table's edge.
     tableSurround(ctx, w, h, t) {
       ctx.fillStyle = linear(ctx, 0, 0, 0, h, [[0, '#3a1a20'], [1, '#261014']]);
@@ -702,6 +762,105 @@ const SkinScenes = (() => {
   };
 
   const PAINTERS = { tink, 'coffee-shop': coffeeShop, 'fine-dining': fineDining };
+
+  // ---------- Ambient life: the tools the skins above use ----------
+  // A soft white dot, tinted and stretched for glows and steam.
+  function glowKey(scene) {
+    return shadeTexture(scene, 'skin-scenes-glow', 64, 64, (ctx, w, h) => {
+      ctx.fillStyle = radial(ctx, w / 2, h / 2, 0, w / 2, [
+        [0, 'rgba(255,255,255,1)'], [0.4, 'rgba(255,255,255,0.45)'], [1, 'rgba(255,255,255,0)'],
+      ]);
+      ctx.fillRect(0, 0, w, h);
+    });
+  }
+
+  // Runs fn(seconds, secondsSinceLastFrame) every frame until the scene closes.
+  function everyFrame(scene, fn) {
+    const onUpdate = (time, delta) => fn(time / 1000, Math.min(delta, 100) / 1000);
+    scene.events.on('update', onUpdate);
+    scene.events.once('shutdown', () => scene.events.off('update', onUpdate));
+  }
+
+  // A smooth, uneven wave between -1 and 1 (three sine waves at odd speeds), for flicker.
+  function waver(t, speed, seed) {
+    const s = t * speed;
+    return 0.5 * Math.sin(s * 1.9 + seed) + 0.3 * Math.sin(s * 3.7 + seed * 1.3) + 0.2 * Math.sin(s * 8.3 + seed * 2.1);
+  }
+
+  // Lights that brighten, dim and swell a touch on their own.
+  //   lights: [{ x, y, radius, color, alpha, amount (how much of alpha it varies by), speed }]
+  function flicker(scene, lights) {
+    const glows = lights.map((light, i) => ({
+      ...light,
+      seed: i * 2.3 + light.x * 0.013,
+      img: scene.add.image(light.x, light.y, glowKey(scene)).setBlendMode(Phaser.BlendModes.ADD).setTint(light.color),
+    }));
+    everyFrame(scene, (t) => {
+      for (const g of glows) {
+        const w = waver(t, g.speed, g.seed);
+        const size = g.radius * 2 * (1 + g.amount * 0.12 * w);
+        g.img.setAlpha(g.alpha * (1 + g.amount * w)).setDisplaySize(size, size);
+      }
+    });
+  }
+
+  // One candle: a wide warm glow and a small bright flame, flickering quickly.
+  function candle(x, y, radius) {
+    return [
+      { x, y: y + 20, radius, color: 0xffaa55, alpha: 0.2, amount: 0.4, speed: 2.2 },
+      { x, y, radius: radius * 0.13, color: 0xffd27a, alpha: 0.7, amount: 0.35, speed: 3.4 },
+    ];
+  }
+
+  // Wisps of steam rising and fading from a point.
+  function steam(scene, x, y) {
+    const life = 2800;
+    const emitter = scene.add.particles(x, y, glowKey(scene), {
+      x: { min: -5, max: 5 },
+      lifespan: life,
+      speedY: { min: -30, max: -20 },
+      speedX: { min: -5, max: 5 },
+      scale: { start: 0.25, end: 0.8 },
+      alpha: { start: 0.4, end: 0 },
+      frequency: 450,
+    });
+    emitter.fastForward(life); // start with steam already rising
+    return emitter;
+  }
+
+  // Slow rain running down a window: short streaks, each at its own speed.
+  //   area: { x, y, w, h }, the glass of the window
+  function rain(scene, area, count = 18) {
+    const newDrop = () => ({
+      x: area.x + Math.random() * area.w,
+      y: area.y + Math.random() * area.h,
+      length: 8 + Math.random() * 16,
+      speed: 40 + Math.random() * 80,
+    });
+    const drops = Array.from({ length: count }, newDrop);
+    const g = scene.add.graphics();
+    everyFrame(scene, (t, dt) => {
+      g.clear();
+      g.lineStyle(2, 0xc4d8ff, 0.4);
+      for (const d of drops) {
+        d.y += d.speed * dt;
+        if (d.y > area.y + area.h) {
+          const fresh = newDrop();
+          Object.assign(d, fresh, { y: area.y - fresh.length });
+        }
+        const top = Math.max(area.y, d.y);
+        const bottom = Math.min(area.y + area.h, d.y + d.length);
+        if (bottom > top) g.lineBetween(d.x, top, d.x, bottom);
+      }
+    });
+  }
+
+  // True when a layer's animations should run: Reduce motion is off, the skin has some,
+  // and the layer is the code-drawn one (the animations are placed on that art).
+  function animates(scene, skinId, layerName) {
+    return !Arcade.settings.get().reduceMotion && !!PAINTERS[skinId].ambient &&
+      !scene.textures.exists(skinFileKey(skinId, layerName + '.png'));
+  }
 
   // ---------- Shades that keep items readable (drawn small and stretched, which is cheap) ----------
   function shadeTexture(scene, key, w, h, paint) {
@@ -789,6 +948,7 @@ const SkinScenes = (() => {
   function addJarScene(scene, skinId, jar) {
     freeOtherSkins(scene, skinId);
     addImage(scene, layer(scene, skinId, 'jar-background', BOARD_W, BOARD_H), 0, 0, BOARD_W, BOARD_H);
+    if (animates(scene, skinId, 'jar-background')) PAINTERS[skinId].ambient.jar(scene);
     addImage(scene, vignetteKey(scene), 0, 0, BOARD_W, BOARD_H);
     const top = jar.bottom - JAR.floor + 10;
     addImage(scene, jarShadeKey(scene), jar.left, top, jar.right - jar.left, jar.bottom - top);
@@ -806,6 +966,7 @@ const SkinScenes = (() => {
     addImage(scene, layer(scene, skinId, 'table-surround', BOARD_W, BOARD_H, table), 0, 0, BOARD_W, BOARD_H);
     addImage(scene, vignetteKey(scene), 0, 0, BOARD_W, BOARD_H);
     addImage(scene, layer(scene, skinId, 'table', w, h), table.left, table.top, w, h);
+    if (animates(scene, skinId, 'table')) PAINTERS[skinId].ambient.table(scene, table);
     addImage(scene, tableShadeKey(scene), table.left, table.top, w, h);
   }
 

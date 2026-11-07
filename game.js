@@ -32,7 +32,8 @@ const CONFIG = {
   // ---------- Skins: how the game looks and sounds. Cosmetic only. ----------
   // Each skin's key (tink, coffee-shop, fine-dining) is also its folder name for art and sounds:
   //   assets/skins/<key>/tier1.png ... tier8.png   square, transparent background, 256 x 256 or bigger
-  //   assets/skins/<key>/<sound file names below>  any short .mp3, .ogg or .wav (spill is used by Table Push)
+  //   assets/skins/<key>/<sound file names below>  any short .mp3, .ogg or .wav (spill is used by Table Push;
+  //                                                 ambient is a background loop, see ambience.js)
   //   assets/skins/<key>/jar-background.png, jar.png, table.png, table-surround.png
   //                                                 the scene art; sizes are listed at the top of scenes.js
   // Any file that isn't there falls back to the code-drawn version or the built-in sound.
@@ -59,7 +60,7 @@ const CONFIG = {
         { name: 'Emote 7', color: '#2ec4b6' },
         { name: 'Emote 8', color: '#ffe14d' },
       ],
-      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3' },
+      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3', ambient: 'ambient.mp3' },
       // Cozy cottage: warm wood and lamp light, with the arcade's pink buttons.
       ui: {
         panel: 0x2e1d2c,
@@ -83,7 +84,7 @@ const CONFIG = {
         { name: 'Coffee bag', color: '#d9a54a' },
         { name: "Tink's signature tub", color: '#ff5fa2' },
       ],
-      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3' },
+      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3', ambient: 'ambient.mp3' },
       // Espresso browns with caramel buttons.
       ui: {
         panel: 0x2b1d14,
@@ -113,7 +114,7 @@ const CONFIG = {
         { name: 'Ice bucket', color: '#b8c2cc' },
         { name: 'Wine barrel', color: '#b8743f' },
       ],
-      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3' },
+      sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3', ambient: 'ambient.mp3' },
       // Dark wood and candlelight, with gold buttons.
       ui: {
         panel: 0x22161a,
@@ -279,6 +280,12 @@ function loadSkinFiles(scene) {
       scene.load.image(key, base + file);
     }
   }
+}
+
+// Tells the background sound player which skin is on screen (it plays only if the
+// player turned it on in Settings). Every start screen and game screen calls this.
+function startAmbience(scene, skinId) {
+  Arcade.ambience.setSkin(scene, skinId, skinFileKey(skinId, CONFIG.skins[skinId].sounds.ambient));
 }
 
 // Plays one of the skin's sounds: its file if one loaded, otherwise the built-in notes.
@@ -482,7 +489,10 @@ class EmoteJarStart extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(CONFIG.skins[this.skinId].background);
     SkinScenes.addJarScene(this, this.skinId, standardJar());
     this.add.rectangle(W / 2, Arcade.config.height / 2, W, Arcade.config.height, col.panel, 0.62);
+    startAmbience(this, this.skinId);
 
+    ui.settingsButton(this, 48, 44, () =>
+      this.scene.start('ArcadeSettings', { back: 'EmoteJarStart', colors: CONFIG.skins[this.skinId].ui }));
     ui.muteButton(this, W - 48, 44);
     ui.text(this, W / 2, 95, CONFIG.title, 56);
     ui.text(this, W / 2, 152, 'Drop. Match two. Merge.', 30, col.muted, { bold: false });
@@ -602,6 +612,7 @@ class EmoteJarPlay extends Phaser.Scene {
     ensureSkinTextures(this, this.skinId);
     Arcade.ui.setColors(this, this.skin.ui);
     this.cameras.main.setBackgroundColor(this.skin.background);
+    startAmbience(this, this.skinId);
 
     // Jar edges.
     this.jarLeft = W / 2 - this.rules.jarWidth / 2;

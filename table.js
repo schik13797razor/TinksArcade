@@ -134,7 +134,10 @@ const TABLE_CONFIG = {
       this.cameras.main.setBackgroundColor(SHARED.skins[this.skinId].background);
       SkinScenes.addTableScene(this, this.skinId, T.table);
       this.add.rectangle(W / 2, Arcade.config.height / 2, W, Arcade.config.height, col.panel, 0.62);
+      startAmbience(this, this.skinId);
 
+      ui.settingsButton(this, 48, 44, () =>
+        this.scene.start('ArcadeSettings', { back: 'TablePushStart', colors: SHARED.skins[this.skinId].ui }));
       ui.muteButton(this, W - 48, 44);
       ui.text(this, W / 2, 95, T.title, 56);
       ui.text(this, W / 2, 152, 'Flick. Match two. Merge.', 30, col.muted, { bold: false });
@@ -253,6 +256,7 @@ const TABLE_CONFIG = {
       ensureSkinTextures(this, this.skinId);
       Arcade.ui.setColors(this, this.skin.ui);
       this.cameras.main.setBackgroundColor(this.skin.background);
+      startAmbience(this, this.skinId);
 
       this.launchX = Arcade.config.width / 2;
       this.launchY = T.launchY;

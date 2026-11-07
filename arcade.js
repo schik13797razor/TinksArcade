@@ -13,6 +13,9 @@
 //   Arcade.fx.pixelBurst          a little pixel explosion for big moments
 //   Arcade.ui.button / ui.text    simple buttons and text in the arcade style
 //   Arcade.ui.setColors / colors  per-scene colors, so a skin can recolor buttons and text
+//   Arcade.settings               remembered choices: background sound, its volume, reduce motion
+//   Arcade.ambience               plays a skin's background sound loop (the loops are in ambience.js)
+//   Arcade.ui.settingsButton      the gear that opens the Settings screen
 
 const ARCADE_CONFIG = {
   title: "Tink's Arcade",
@@ -35,6 +38,16 @@ const ARCADE_CONFIG = {
     volume: 0.6,
     startMuted: false,
     click: [{ freq: 660, to: 880, type: 'triangle', duration: 0.05, volume: 0.15 }],
+  },
+
+  // Background sound: a quiet loop for each skin (fireplace, café, restaurant), with
+  // its own volume, separate from the sound effects. Off until a player turns it on.
+  //   level:  how loud the loop is at 100% on the volume slider (0 to 1)
+  //   volume: where the slider starts (0 to 1)
+  ambience: {
+    level: 0.5,
+    volume: 0.5,
+    startOn: false,
   },
 
   // Difficulty presets. Each game decides what these multipliers mean.
@@ -298,6 +311,7 @@ const Arcade = (() => {
     setMuted(value) {
       this.muted = value;
       store.set('muted', value);
+      ambience.sync(); // muting silences the background sound too
     },
 
     // True if a sound with this key played in the last 40 ms (and marks it as playing now).
@@ -337,6 +351,110 @@ const Arcade = (() => {
       }
       if (this.recentlyPlayed(key)) return;
       scene.sound.play(cacheKey, { volume: C.sounds.volume * volume, rate });
+    },
+  };
+
+  // ---------- Settings ----------
+  // Remembered in the browser. Reduce motion starts from the device's own setting
+  // (Windows, iPhone and Android all have one) until the player changes it here.
+  function deviceReducesMotion() {
+    try {
+      return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  const settings = {
+    get() {
+      return {
+        ambient: C.ambience.startOn,
+        ambientVolume: C.ambience.volume,
+        reduceMotion: deviceReducesMotion(),
+        ...store.get('settings', {}),
+      };
+    },
+    set(changes) {
+      store.set('settings', { ...store.get('settings', {}), ...changes });
+      ambience.sync();
+    },
+  };
+
+  // ---------- Background sound ----------
+  // Each scene tells the player which skin is showing (setSkin); the player starts,
+  // swaps or stops that skin's loop to match the settings and the mute button.
+  // A loop is a "recipe" registered from ambience.js, or the skin's ambient.mp3 if one loaded.
+  const ambience = {
+    recipes: {}, // skinId -> function(ctx, out) returning { tick(now), stop() }
+    game: null,
+    wanted: null, // { skinId, fileKey } for the skin on screen, or null
+    playing: null,
+
+    register(skinId, recipe) {
+      this.recipes[skinId] = recipe;
+    },
+
+    // skinId: the skin on screen, or null (the main menu). fileKey: the loader key of
+    // the skin's ambient.mp3, used instead of the recipe if that file loaded.
+    setSkin(scene, skinId, fileKey) {
+      this.game = scene.game;
+      this.wanted = skinId ? { skinId, fileKey } : null;
+      this.sync();
+    },
+
+    sync() {
+      if (!this.game) return;
+      const s = settings.get();
+      const want = s.ambient && !sfx.muted && this.wanted ? this.wanted.skinId : null;
+      if (this.playing && this.playing.skinId !== want) this.stop();
+      if (want && !this.playing) this.start(this.wanted);
+      if (this.playing) this.setLevel(s.ambientVolume);
+    },
+
+    start({ skinId, fileKey }) {
+      const sound = this.game.sound;
+      if (fileKey && this.game.cache.audio.exists(fileKey)) {
+        const file = sound.add(fileKey, { loop: true, volume: 0 });
+        file.play();
+        this.playing = { skinId, file };
+        return;
+      }
+      const ctx = sound.context;
+      const recipe = this.recipes[skinId];
+      if (!ctx || !recipe) return; // no Web Audio, or no loop for this skin
+      const out = ctx.createGain();
+      out.gain.value = 0; // fades in from silence in setLevel
+      out.connect(sound.destination || ctx.destination);
+      const voice = recipe(ctx, out);
+      // Recipes schedule their little sounds (crackles, clinks) a moment ahead, ten times a second.
+      const timer = setInterval(() => {
+        if (ctx.state === 'running') voice.tick(ctx.currentTime);
+      }, 100);
+      this.playing = { skinId, ctx, out, voice, timer };
+    },
+
+    setLevel(volume) {
+      const p = this.playing;
+      const level = Math.max(0, Math.min(1, volume)) * C.ambience.level;
+      if (p.file) p.file.setVolume(level);
+      else p.out.gain.setTargetAtTime(level, p.ctx.currentTime, 0.4);
+    },
+
+    stop() {
+      const p = this.playing;
+      this.playing = null;
+      if (!p) return;
+      if (p.file) {
+        p.file.stop();
+        p.file.destroy();
+        return;
+      }
+      clearInterval(p.timer);
+      p.out.gain.setTargetAtTime(0, p.ctx.currentTime, 0.15); // a quick fade, then let go
+      setTimeout(() => {
+        p.voice.stop();
+        p.out.disconnect();
+      }, 800);
     },
   };
 
@@ -508,6 +626,120 @@ const Arcade = (() => {
     };
   }
 
+  // A gear button, the same size as the speaker button. onClick opens the Settings screen.
+  function settingsButton(scene, x, y, onClick) {
+    const w = 64;
+    const h = 48;
+    const g = scene.add.graphics();
+    const zone = scene.add.zone(x, y, w, h).setInteractive({ useHandCursor: true });
+    const col = colors(scene);
+    let hover = false;
+
+    function draw() {
+      const white = 0xfff6fb;
+      g.clear();
+      g.fillStyle(hover ? col.secondaryHover : col.secondary, 1);
+      g.fillRoundedRect(x - w / 2, y - h / 2, w, h, 16);
+      g.lineStyle(5, white, 1);
+      g.strokeCircle(x, y, 8);
+      g.lineStyle(6, white, 1);
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4;
+        g.lineBetween(x + Math.cos(a) * 10, y + Math.sin(a) * 10, x + Math.cos(a) * 15, y + Math.sin(a) * 15);
+      }
+    }
+
+    zone.on('pointerover', () => { hover = true; draw(); });
+    zone.on('pointerout', () => { hover = false; draw(); });
+    zone.on('pointerup', () => {
+      sfx.play(scene, C.sounds.click, 'click');
+      onClick();
+    });
+    draw();
+    return { zone };
+  }
+
+  // ---------- Settings screen ----------
+  // Opened from the gear on the main menu or a game's start screen.
+  // data: { back: the scene to return to, colors: the skin's ui colors (optional) }
+  class SettingsScene extends Phaser.Scene {
+    constructor() {
+      super('ArcadeSettings');
+    }
+
+    init(data) {
+      this.back = data.back || 'ArcadeMenu';
+      this.skinColors = data.colors || null;
+    }
+
+    create() {
+      const W = C.width;
+      setColors(this, this.skinColors);
+      const col = colors(this);
+      this.cameras.main.setBackgroundColor(col.panel);
+      this.dragging = false;
+
+      text(this, W / 2, 110, 'Settings', 56);
+
+      const s = settings.get();
+      this.row(230, 'Sound effects', 'Drops, pops and clicks.', !sfx.muted, (on) => sfx.setMuted(!on));
+      this.row(370, 'Background sound', 'A quiet loop for each skin: a crackling fire, a café, a restaurant.',
+        s.ambient, (on) => settings.set({ ambient: on }));
+      this.volumeSlider(510, s.ambientVolume);
+      this.row(660, 'Reduce motion', 'Turns off background animation, like rain, steam and flickering lights.',
+        s.reduceMotion, (on) => settings.set({ reduceMotion: on }));
+
+      button(this, W / 2, 880, 380, 90, 'Done', () => this.scene.start(this.back), { fontSize: 40 });
+    }
+
+    // A label and description on the left, an On/Off button on the right.
+    row(y, label, description, value, onChange) {
+      const col = colors(this);
+      text(this, 50, y - 22, label, 34, col.text, { originX: 0 });
+      text(this, 50, y + 22, description, 24, col.muted, { originX: 0, originY: 0, bold: false, wrap: 380, align: 'left' });
+      let on = value;
+      const toggle = button(this, C.width - 110, y, 160, 70, on ? 'On' : 'Off', () => {
+        on = !on;
+        toggle.setLabel(on ? 'On' : 'Off').setSelected(on);
+        onChange(on);
+      }, { kind: 'toggle', fontSize: 32, selected: on });
+    }
+
+    // The background sound's volume: drag or tap along the bar.
+    volumeSlider(y, value) {
+      const col = colors(this);
+      const left = 50;
+      const right = C.width - 50;
+      text(this, left, y, 'Volume', 30, col.text, { originX: 0 });
+      const percent = text(this, right, y, '', 30, col.muted, { originX: 1 });
+      const g = this.add.graphics();
+      const barY = y + 60;
+
+      const draw = (v) => {
+        const x = left + (right - left) * v;
+        g.clear();
+        g.fillStyle(col.secondary, 1);
+        g.fillRoundedRect(left, barY - 8, right - left, 16, 8);
+        g.fillStyle(col.primary, 1);
+        g.fillRoundedRect(left, barY - 8, Math.max(16, x - left), 16, 8);
+        g.fillStyle(col.selected, 1);
+        g.fillCircle(x, barY, 22);
+        percent.setText(Math.round(v * 100) + '%');
+      };
+      const setFrom = (px) => {
+        const v = Math.max(0, Math.min(1, (px - left) / (right - left)));
+        draw(v);
+        settings.set({ ambientVolume: v });
+      };
+
+      this.add.zone((left + right) / 2, barY, right - left + 50, 80).setInteractive({ useHandCursor: true })
+        .on('pointerdown', (pointer) => { this.dragging = true; setFrom(pointer.worldX); });
+      this.input.on('pointermove', (pointer) => { if (this.dragging) setFrom(pointer.worldX); });
+      this.input.on('pointerup', () => { this.dragging = false; });
+      draw(value);
+    }
+  }
+
   // ---------- Main menu ----------
   class MenuScene extends Phaser.Scene {
     constructor() {
@@ -516,6 +748,8 @@ const Arcade = (() => {
 
     create() {
       const W = C.width;
+      ambience.setSkin(this, null); // no skin on the menu, so no background sound
+      settingsButton(this, 48, 44, () => this.scene.start('ArcadeSettings', { back: 'ArcadeMenu' }));
       muteButton(this, W - 48, 44);
       text(this, W / 2, 170, C.title, 64);
       text(this, W / 2, 245, 'Pick a game', 32, C.colors.muted, { bold: false });
@@ -554,7 +788,7 @@ const Arcade = (() => {
         default: 'matter',
         matter: { gravity: { y: 1 }, debug: false },
       },
-      scene: [MenuScene, ...scenes],
+      scene: [MenuScene, SettingsScene, ...scenes],
     });
     return Arcade.game;
   }
@@ -572,8 +806,10 @@ const Arcade = (() => {
     resultLine,
     copyText,
     sfx,
+    settings,
+    ambience,
     fx: { pixelBurst },
-    ui: { text, button, muteButton, setColors, colors },
+    ui: { text, button, muteButton, settingsButton, setColors, colors },
     registerGame,
     boot,
   };

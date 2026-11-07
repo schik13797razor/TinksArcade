@@ -127,7 +127,10 @@ const SHOOTER_CONFIG = {
       this.cameras.main.setBackgroundColor(SHARED.skins[this.skinId].background);
       SkinScenes.addTableScene(this, this.skinId, S.table);
       this.add.rectangle(W / 2, Arcade.config.height / 2, W, Arcade.config.height, col.panel, 0.62);
+      startAmbience(this, this.skinId);
 
+      ui.settingsButton(this, 48, 44, () =>
+        this.scene.start('ArcadeSettings', { back: 'PopShotStart', colors: SHARED.skins[this.skinId].ui }));
       ui.muteButton(this, W - 48, 44);
       ui.text(this, W / 2, 95, S.title, 56);
       ui.text(this, W / 2, 152, 'Aim. Match three. Pop.', 30, col.muted, { bold: false });
@@ -249,6 +252,7 @@ const SHOOTER_CONFIG = {
 
       Arcade.ui.setColors(this, this.skin.ui);
       this.cameras.main.setBackgroundColor(this.skin.background);
+      startAmbience(this, this.skinId);
       this.drawTable();
       this.createHud();
 
