@@ -30,14 +30,19 @@ const CONFIG = {
   ],
 
   // ---------- Skins: how the game looks and sounds. Cosmetic only. ----------
-  // Each skin's key (tink, coffee-counter, bar-night) is also its folder name for art and sounds:
+  // Each skin's key (tink, coffee-shop, fine-dining) is also its folder name for art and sounds:
   //   assets/skins/<key>/tier1.png ... tier8.png   square, transparent background, 256 x 256 or bigger
   //   assets/skins/<key>/<sound file names below>  any short .mp3, .ogg or .wav (spill is used by Table Push)
-  // Any file that isn't there falls back to the placeholder shape or the built-in sound.
+  //   assets/skins/<key>/jar-background.png, jar.png, table.png, table-surround.png
+  //                                                 the scene art; sizes are listed at the top of scenes.js
+  // Any file that isn't there falls back to the code-drawn version or the built-in sound.
   //   name:       shown in the skin picker and the copied result
-  //   background: the color behind the jar
+  //   background: the plain color shown while the scene art loads
   //   label:      what the placeholder shapes show: 'number' (the tier) or 'name'
   //   tiers:      8 names and placeholder colors, smallest first (colors also tint the pixel bursts)
+  //   ui:         button, text and panel colors for this skin (any color left out uses the
+  //               arcade's own from arcade.js). Fills are numbers (0x...), text colors are strings.
+  // The scenes themselves (room, jar, table) are drawn in scenes.js.
   defaultSkin: 'tink',
   skins: {
     tink: {
@@ -55,9 +60,17 @@ const CONFIG = {
         { name: 'Emote 8', color: '#ffe14d' },
       ],
       sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3' },
+      // Cozy cottage: warm wood and lamp light, with the arcade's pink buttons.
+      ui: {
+        panel: 0x2e1d2c,
+        secondary: 0x4a2f3f,
+        secondaryHover: 0x5c3c4f,
+        border: 0x7a5468,
+        muted: '#e0c3cf',
+      },
     },
-    'coffee-counter': {
-      name: 'Coffee Counter',
+    'coffee-shop': {
+      name: 'Coffee Shop',
       background: '#24170f',
       label: 'name',
       tiers: [
@@ -71,24 +84,54 @@ const CONFIG = {
         { name: "Tink's signature tub", color: '#ff5fa2' },
       ],
       sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3' },
+      // Espresso browns with caramel buttons.
+      ui: {
+        panel: 0x2b1d14,
+        primary: 0xe6a35c,
+        primaryHover: 0xf0b877,
+        secondary: 0x4a3426,
+        secondaryHover: 0x5c4231,
+        selected: 0xf3dcae,
+        border: 0x80603f,
+        text: '#fff4e6',
+        textDark: '#2b1a0e',
+        muted: '#d9c09c',
+        accent: '#ffb36b',
+      },
     },
-    'bar-night': {
-      name: 'Bar Night',
-      background: '#0d1424',
+    'fine-dining': {
+      name: 'Fine Dining',
+      background: '#1a1012',
       label: 'name',
       tiers: [
-        { name: 'Ice cube', color: '#d6f3ff' },
-        { name: 'Shot glass', color: '#7fd1c7' },
+        { name: 'Grape', color: '#9a6ab8' },
+        { name: 'Cork', color: '#e2c590' },
         { name: 'Wine glass', color: '#c0395e' },
-        { name: 'Pint glass', color: '#f0a030' },
+        { name: 'Champagne flute', color: '#f5dd7a' },
+        { name: 'Decanter', color: '#46a6ad' },
         { name: 'Wine bottle', color: '#4f9a5c' },
-        { name: 'Champagne bottle', color: '#f5dd7a' },
-        { name: 'Crate', color: '#a87445' },
-        { name: 'Keg', color: '#b8c2cc' },
+        { name: 'Ice bucket', color: '#b8c2cc' },
+        { name: 'Wine barrel', color: '#b8743f' },
       ],
       sounds: { drop: 'drop.mp3', merge: 'merge.mp3', bonus: 'bonus.mp3', gameOver: 'game-over.mp3', newBest: 'new-best.mp3', spill: 'spill.mp3' },
+      // Dark wood and candlelight, with gold buttons.
+      ui: {
+        panel: 0x22161a,
+        primary: 0xd9b55e,
+        primaryHover: 0xe8c878,
+        secondary: 0x3d2a2f,
+        secondaryHover: 0x4d363c,
+        selected: 0xf2e2b3,
+        border: 0x86683f,
+        text: '#fbf3e4',
+        textDark: '#24180c',
+        muted: '#d2bd96',
+        accent: '#f0c96a',
+      },
     },
   },
+  // Old skin names, so a skin picked before a rename is still remembered.
+  renamedSkins: { 'coffee-counter': 'coffee-shop', 'bar-night': 'fine-dining' },
   bigBonus: 1000,       // two tier-8 items touching: both vanish, plus this
 
   spawnTiers: [1, 2, 3], // new drops are picked at random from these
@@ -193,6 +236,7 @@ function buildRules(mode, difficultyId, period) {
 
 // ---------- Skins ----------
 function skinIdOrDefault(id) {
+  id = CONFIG.renamedSkins[id] || id;
   return CONFIG.skins[id] ? id : CONFIG.defaultSkin;
 }
 
@@ -228,6 +272,12 @@ function loadSkinFiles(scene) {
       triedSkinFiles.add(key);
       scene.load.audio(key, base + file);
     }
+    for (const file of SkinScenes.filesFor(skinId)) { // scene art: see scenes.js
+      const key = skinFileKey(skinId, file);
+      if (triedSkinFiles.has(key)) continue;
+      triedSkinFiles.add(key);
+      scene.load.image(key, base + file);
+    }
   }
 }
 
@@ -242,8 +292,13 @@ function playSkinSound(scene, skinId, name, notes, rate = 1) {
   }
 }
 
+// Room around each item's texture for its outline and shadow. The physics circle
+// doesn't change: it's set from the tier's radius, not from the texture.
+const ITEM_PAD = 6;
+
 // Makes one texture per tier for a skin, sized to the tier: the skin's art if
-// it loaded, otherwise a placeholder shape. Runs after loadSkinFiles has finished.
+// it loaded, otherwise a placeholder shape, with an outline and a soft shadow so
+// it stands out on any scene. Runs after loadSkinFiles has finished.
 function ensureSkinTextures(scene, skinId) {
   const skin = CONFIG.skins[skinId];
   CONFIG.tiers.forEach((t, i) => {
@@ -251,16 +306,49 @@ function ensureSkinTextures(scene, skinId) {
     const key = tierTextureKey(skinId, tier);
     if (scene.textures.exists(key)) return;
     const size = t.radius * 2;
-    const tex = scene.textures.createCanvas(key, size, size);
-    const ctx = tex.getContext();
-    const art = skinFileKey(skinId, tierArtFile(tier));
-    if (scene.textures.exists(art)) {
-      drawArt(ctx, scene.textures.get(art).getSourceImage(), size);
+    const art = document.createElement('canvas');
+    art.width = size;
+    art.height = size;
+    const file = skinFileKey(skinId, tierArtFile(tier));
+    if (scene.textures.exists(file)) {
+      drawArt(art.getContext('2d'), scene.textures.get(file).getSourceImage(), size);
     } else {
-      drawPlaceholder(ctx, t.radius, tier, skin);
+      drawPlaceholder(art.getContext('2d'), t.radius, tier, skin);
     }
+    const tex = scene.textures.createCanvas(key, size + ITEM_PAD * 2, size + ITEM_PAD * 2);
+    drawWithOutline(tex.getContext(), art, ITEM_PAD);
     tex.refresh();
   });
+}
+
+// Draws the item with a dark outline that follows its shape, and a soft shadow under it.
+// The item is drawn 4 units smaller, so the outline ends where the physics circle does.
+function drawWithOutline(ctx, art, pad) {
+  const size = art.width - 4;
+  const at = pad + 2;
+  const shape = document.createElement('canvas'); // a dark copy of the item's shape
+  shape.width = art.width;
+  shape.height = art.height;
+  const s = shape.getContext('2d');
+  s.drawImage(art, 0, 0);
+  s.globalCompositeOperation = 'source-in';
+  s.fillStyle = '#140a12';
+  s.fillRect(0, 0, shape.width, shape.height);
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 3;
+  ctx.globalAlpha = 0.6;
+  ctx.drawImage(shape, at, at, size, size);
+  ctx.restore();
+  ctx.globalAlpha = 0.75;
+  for (let n = 0; n < 8; n++) {
+    const a = (n * Math.PI) / 4;
+    ctx.drawImage(shape, at + Math.cos(a) * 2.5, at + Math.sin(a) * 2.5, size, size);
+  }
+  ctx.globalAlpha = 1;
+  ctx.drawImage(art, at, at, size, size);
 }
 
 // Fits the image inside the square, keeping its shape.
@@ -353,6 +441,12 @@ function bestKey(period, difficultyId) {
   return `${CONFIG.id}:${period.key}:${difficultyId}`;
 }
 
+// The jar's inside edges at its normal width (the start screen shows this one).
+function standardJar() {
+  const W = Arcade.config.width;
+  return { left: W / 2 - CONFIG.jar.width / 2, right: W / 2 + CONFIG.jar.width / 2, bottom: CONFIG.jar.bottomY };
+}
+
 // ---------------------------------- Start screen ----------------------------------
 class EmoteJarStart extends Phaser.Scene {
   constructor() {
@@ -365,7 +459,6 @@ class EmoteJarStart extends Phaser.Scene {
 
   create() {
     const W = Arcade.config.width;
-    const col = Arcade.config.colors;
     const ui = Arcade.ui;
     const last = Arcade.store.get(CONFIG.id + ':last', {});
     this.mode = ['free', 'daily', 'weekly'].includes(last.mode) ? last.mode : 'free';
@@ -373,6 +466,13 @@ class EmoteJarStart extends Phaser.Scene {
     this.skinId = skinIdOrDefault(last.skin);
     this.skinIds = Object.keys(CONFIG.skins);
     this.skinIds.forEach((id) => ensureSkinTextures(this, id));
+
+    // The chosen skin's jar scene, dimmed, with its button colors.
+    Arcade.ui.setColors(this, CONFIG.skins[this.skinId].ui);
+    const col = Arcade.ui.colors(this);
+    this.cameras.main.setBackgroundColor(CONFIG.skins[this.skinId].background);
+    SkinScenes.addJarScene(this, this.skinId, standardJar());
+    this.add.rectangle(W / 2, Arcade.config.height / 2, W, Arcade.config.height, col.panel, 0.62);
 
     ui.muteButton(this, W - 48, 44);
     ui.text(this, W / 2, 95, CONFIG.title, 56);
@@ -414,10 +514,12 @@ class EmoteJarStart extends Phaser.Scene {
     this.select(this.mode, this.difficultyId, this.skinId);
   }
 
+  // Saves the new skin, then redraws the screen in its scene and colors.
   cycleSkin(step) {
     const i = this.skinIds.indexOf(this.skinId);
     const next = this.skinIds[(i + step + this.skinIds.length) % this.skinIds.length];
     this.select(this.mode, this.difficultyId, next);
+    this.scene.restart();
   }
 
   // Shows the skin's 8 tiers in a row, growing from small to big like in the jar.
@@ -443,7 +545,6 @@ class EmoteJarStart extends Phaser.Scene {
     for (const id in this.modeButtons) this.modeButtons[id].setSelected(id === mode);
     for (const id in this.difficultyButtons) this.difficultyButtons[id].setSelected(id === difficultyId);
     this.skinName.setText(CONFIG.skins[skinId].name);
-    this.cameras.main.setBackgroundColor(CONFIG.skins[skinId].background);
     this.showSkinPreview();
 
     const period = Arcade.getPeriod(CONFIG.id, mode);
@@ -490,6 +591,7 @@ class EmoteJarPlay extends Phaser.Scene {
     this.aiming = false;
 
     ensureSkinTextures(this, this.skinId);
+    Arcade.ui.setColors(this, this.skin.ui);
     this.cameras.main.setBackgroundColor(this.skin.background);
 
     // Jar edges.
@@ -548,32 +650,29 @@ class EmoteJarPlay extends Phaser.Scene {
     });
   }
 
+  // The skin's room and jar (scenes.js), then the game-over line and the labels under the jar.
   drawJar() {
-    const col = Arcade.config.colors;
-    const top = this.rules.lineY - 40;
-    const g = this.add.graphics();
-    g.fillStyle(0xffffff, 0.05);
-    g.fillRect(this.jarLeft, top, this.rules.jarWidth, this.jarBottom - top);
-    g.lineStyle(8, col.border, 1);
-    g.beginPath();
-    g.moveTo(this.jarLeft - 4, top);
-    g.lineTo(this.jarLeft - 4, this.jarBottom + 4);
-    g.lineTo(this.jarRight + 4, this.jarBottom + 4);
-    g.lineTo(this.jarRight + 4, top);
-    g.strokePath();
+    const col = Arcade.ui.colors(this);
+    SkinScenes.addJarScene(this, this.skinId, { left: this.jarLeft, right: this.jarRight, bottom: this.jarBottom });
 
-    // The game-over line: calm dashes, plus a red copy that flashes when something lingers above it.
-    const dashes = (gfx, color, alpha) => {
-      gfx.lineStyle(4, color, alpha);
+    // The game-over line: light dashes on a dark edge, so they show on any scene,
+    // plus a red copy that flashes when something lingers above it.
+    const y = this.rules.lineY;
+    const dashes = (gfx, width, color, alpha, grow = 0) => {
+      gfx.lineStyle(width, color, alpha);
       for (let x = this.jarLeft; x < this.jarRight; x += 28) {
-        gfx.lineBetween(x, this.rules.lineY, Math.min(x + 16, this.jarRight), this.rules.lineY);
+        gfx.lineBetween(Math.max(this.jarLeft, x - grow), y, Math.min(x + 16 + grow, this.jarRight), y);
       }
     };
-    dashes(this.add.graphics(), 0xffffff, 0.25);
+    const line = this.add.graphics();
+    dashes(line, 9, 0x000000, 0.45, 2);
+    dashes(line, 4, 0xffffff, 0.8);
     this.warnLine = this.add.graphics().setVisible(false);
-    dashes(this.warnLine, col.warn, 1);
+    dashes(this.warnLine, 10, 0x000000, 0.5, 2);
+    dashes(this.warnLine, 5, col.warn, 1);
 
-    Arcade.ui.text(this, Arcade.config.width / 2, this.jarBottom + 34, this.contextLabel(), 24, col.muted, { bold: false });
+    Arcade.ui.text(this, Arcade.config.width / 2, this.jarBottom + 34, this.contextLabel(), 24, col.text,
+      { bold: false, stroke: true });
     Arcade.ui.muteButton(this, Arcade.config.width - 44, this.jarBottom + 32);
   }
 
@@ -585,8 +684,15 @@ class EmoteJarPlay extends Phaser.Scene {
 
   createHud() {
     const W = Arcade.config.width;
-    const col = Arcade.config.colors;
+    const col = Arcade.ui.colors(this);
     const ui = Arcade.ui;
+    // A solid bar behind the score, so it reads the same on every scene.
+    const bar = this.add.graphics();
+    bar.fillStyle(col.panel, 0.92);
+    bar.fillRect(0, 0, W, CONFIG.hudHeight);
+    bar.fillStyle(col.border, 1);
+    bar.fillRect(0, CONFIG.hudHeight - 3, W, 3);
+
     ui.button(this, 76, 55, 112, 62, 'Menu', () => this.scene.start('EmoteJarStart'),
       { kind: 'secondary', fontSize: 28 }).setDepth(50);
 
@@ -752,7 +858,8 @@ class EmoteJarPlay extends Phaser.Scene {
     const ring = this.add.circle(x, y, big ? 90 : 40, Phaser.Display.Color.HexStringToColor(color).color, 0.5);
     this.tweens.add({ targets: ring, scale: big ? 3 : 1.8, alpha: 0, duration: big ? 500 : 260, onComplete: () => ring.destroy() });
 
-    const label = Arcade.ui.text(this, x, y, '+' + Arcade.formatScore(points), big ? 64 : 34, Arcade.config.colors.text);
+    const label = Arcade.ui.text(this, x, y, '+' + Arcade.formatScore(points), big ? 64 : 34, Arcade.ui.colors(this).text,
+      { stroke: true });
     label.setDepth(40);
     this.tweens.add({ targets: label, y: y - (big ? 120 : 70), alpha: 0, duration: big ? 1100 : 650, onComplete: () => label.destroy() });
   }
@@ -789,7 +896,9 @@ class EmoteJarPlay extends Phaser.Scene {
     const ready = time - this.lastDropAt >= this.rules.cooldownMs;
     this.held.setPosition(this.dropX, CONFIG.dropperY).setAlpha(ready ? 1 : 0.35);
     this.guide.clear();
-    this.guide.lineStyle(3, 0xffffff, 0.12);
+    this.guide.lineStyle(7, 0x000000, 0.15);
+    this.guide.lineBetween(this.dropX, CONFIG.dropperY, this.dropX, this.jarBottom);
+    this.guide.lineStyle(3, 0xffffff, 0.22);
     this.guide.lineBetween(this.dropX, CONFIG.dropperY, this.dropX, this.jarBottom);
   }
 
@@ -807,7 +916,7 @@ class EmoteJarPlay extends Phaser.Scene {
 
     const W = Arcade.config.width;
     const H = Arcade.config.height;
-    const col = Arcade.config.colors;
+    const col = Arcade.ui.colors(this);
     const ui = Arcade.ui;
     const depth = 100;
     const line = Arcade.resultLine(CONFIG.title, this.period, this.difficultyId, this.score, this.skin.name);

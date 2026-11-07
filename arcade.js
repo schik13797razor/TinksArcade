@@ -12,6 +12,7 @@
 //   Arcade.sfx.play / playFile    short sound effects (made on the fly, or from a file), with a remembered mute
 //   Arcade.fx.pixelBurst          a little pixel explosion for big moments
 //   Arcade.ui.button / ui.text    simple buttons and text in the arcade style
+//   Arcade.ui.setColors / colors  per-scene colors, so a skin can recolor buttons and text
 
 const ARCADE_CONFIG = {
   title: "Tink's Arcade",
@@ -203,7 +204,7 @@ const Arcade = (() => {
 
   // e.g. "Tink's Emote Jar · Week 12 · Hard · 4,820"
   // variant (optional): shown after the title, e.g. a skin name:
-  //   "Tink's Emote Jar · Bar Night · Week 12 · Hard · 4,820"
+  //   "Tink's Emote Jar · Fine Dining · Week 12 · Hard · 4,820"
   function resultLine(gameTitle, period, difficultyId, score, variant) {
     const parts = [gameTitle];
     if (variant) parts.push(variant);
@@ -372,24 +373,39 @@ const Arcade = (() => {
   }
 
   // ---------- UI helpers ----------
+  // A scene can swap in its own colors (a skin's buttons, text and panels). Anything
+  // it leaves out keeps the arcade's color. Call setColors at the start of create(),
+  // before adding buttons: each button picks up the colors when it's made.
+  function setColors(scene, overrides) {
+    scene.arcadeColors = overrides ? { ...C.colors, ...overrides } : null;
+  }
+
+  function colors(scene) {
+    return (scene && scene.arcadeColors) || C.colors;
+  }
+
+  // options: bold (default true), align, wrap (width), originX, originY,
+  //          stroke: true for a dark outline, so text stays readable over busy scenery
   function text(scene, x, y, value, size, color, options = {}) {
-    return scene.add
+    const t = scene.add
       .text(x, y, value, {
         fontFamily: C.font,
         fontSize: size + 'px',
         fontStyle: options.bold === false ? 'normal' : 'bold',
-        color: color || C.colors.text,
+        color: color || colors(scene).text,
         align: options.align || 'center',
         wordWrap: options.wrap ? { width: options.wrap } : undefined,
       })
       .setOrigin(options.originX ?? 0.5, options.originY ?? 0.5);
+    if (options.stroke) t.setStroke('#120a10', Math.max(4, Math.round(size / 5)));
+    return t;
   }
 
   // A rounded button. kind: 'primary' (pink), 'secondary' (grey, for way-out
   // choices like Back or Menu) or 'toggle' (one of a set; highlighted when selected).
   function button(scene, x, y, w, h, label, onClick, options = {}) {
     const kind = options.kind || 'primary';
-    const col = C.colors;
+    const col = colors(scene);
     const g = scene.add.graphics();
     const t = text(scene, x, y, label, options.fontSize || 34, col.text);
     const zone = scene.add.zone(x, y, w, h).setInteractive({ useHandCursor: true });
@@ -449,10 +465,12 @@ const Arcade = (() => {
     const zone = scene.add.zone(x, y, w, h).setInteractive({ useHandCursor: true });
     let hover = false;
 
+    const col = colors(scene);
+
     function draw() {
       const white = 0xfff6fb;
       g.clear();
-      g.fillStyle(hover ? C.colors.secondaryHover : C.colors.secondary, 1);
+      g.fillStyle(hover ? col.secondaryHover : col.secondary, 1);
       g.fillRoundedRect(x - w / 2, y - h / 2, w, h, 16);
       const ix = x - 10;
       g.fillStyle(white, 1);
@@ -555,7 +573,7 @@ const Arcade = (() => {
     copyText,
     sfx,
     fx: { pixelBurst },
-    ui: { text, button, muteButton },
+    ui: { text, button, muteButton, setColors, colors },
     registerGame,
     boot,
   };

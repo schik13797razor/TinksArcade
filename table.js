@@ -118,7 +118,6 @@ const TABLE_CONFIG = {
 
     create() {
       const W = Arcade.config.width;
-      const col = Arcade.config.colors;
       const ui = Arcade.ui;
       const last = Arcade.store.get(T.id + ':last', {});
       // A first visit starts on the skin last used in the Emote Jar.
@@ -128,6 +127,13 @@ const TABLE_CONFIG = {
       this.skinId = skinIdOrDefault(last.skin || jarLast.skin);
       this.skinIds = Object.keys(SHARED.skins);
       this.skinIds.forEach((id) => ensureSkinTextures(this, id));
+
+      // The chosen skin's table scene, dimmed, with its button colors.
+      Arcade.ui.setColors(this, SHARED.skins[this.skinId].ui);
+      const col = Arcade.ui.colors(this);
+      this.cameras.main.setBackgroundColor(SHARED.skins[this.skinId].background);
+      SkinScenes.addTableScene(this, this.skinId, T.table);
+      this.add.rectangle(W / 2, Arcade.config.height / 2, W, Arcade.config.height, col.panel, 0.62);
 
       ui.muteButton(this, W - 48, 44);
       ui.text(this, W / 2, 95, T.title, 56);
@@ -168,10 +174,12 @@ const TABLE_CONFIG = {
       this.select(this.mode, this.difficultyId, this.skinId);
     }
 
+    // Saves the new skin, then redraws the screen in its scene and colors.
     cycleSkin(step) {
       const i = this.skinIds.indexOf(this.skinId);
       const next = this.skinIds[(i + step + this.skinIds.length) % this.skinIds.length];
       this.select(this.mode, this.difficultyId, next);
+      this.scene.restart();
     }
 
     // Shows the skin's 8 tiers in a row, growing from small to big.
@@ -197,7 +205,6 @@ const TABLE_CONFIG = {
       for (const id in this.modeButtons) this.modeButtons[id].setSelected(id === mode);
       for (const id in this.difficultyButtons) this.difficultyButtons[id].setSelected(id === difficultyId);
       this.skinName.setText(SHARED.skins[skinId].name);
-      this.cameras.main.setBackgroundColor(SHARED.skins[skinId].background);
       this.showSkinPreview();
 
       const period = Arcade.getPeriod(T.id, mode);
@@ -244,6 +251,7 @@ const TABLE_CONFIG = {
       this.aim = null; // while dragging: { x, y, dirX, dirY, power }
 
       ensureSkinTextures(this, this.skinId);
+      Arcade.ui.setColors(this, this.skin.ui);
       this.cameras.main.setBackgroundColor(this.skin.background);
 
       this.launchX = Arcade.config.width / 2;
@@ -295,38 +303,47 @@ const TABLE_CONFIG = {
       });
     }
 
+    // The skin's table and surroundings (scenes.js), then the edges, bumper and launch zone.
+    // Lines are light on a dark edge, so they show on a dark table and a white tablecloth alike.
     drawTable() {
       const W = Arcade.config.width;
-      const col = Arcade.config.colors;
+      const col = Arcade.ui.colors(this);
       const { left, right, top, bottom } = T.table;
+      SkinScenes.addTableScene(this, this.skinId, T.table);
 
-      const g = this.add.graphics();
-      g.fillStyle(0xffffff, 0.06);
-      g.fillRect(left, top, right - left, bottom - top);
       // Open edges: dashed, because items can go over them.
-      g.lineStyle(4, 0xffffff, 0.3);
-      dashedLine(g, left, bottom, left, top);
-      dashedLine(g, left, top, right, top);
-      dashedLine(g, right, top, right, bottom);
+      const g = this.add.graphics();
+      for (const [width, color, alpha] of [[9, 0x000000, 0.4], [4, 0xffffff, 0.7]]) {
+        g.lineStyle(width, color, alpha);
+        dashedLine(g, left, bottom, left, top);
+        dashedLine(g, left, top, right, top);
+        dashedLine(g, right, top, right, bottom);
+      }
       // The bumper along the bottom.
+      g.fillStyle(0x000000, 0.45);
+      g.fillRect(left - 3, bottom - 3, right - left + 6, 18);
       g.fillStyle(col.border, 1);
       g.fillRect(left, bottom, right - left, 12);
 
       // The launch zone, plus a red copy that flashes when something sits in it.
-      const zone = (gfx, color, fillAlpha, lineAlpha) => {
-        gfx.fillStyle(color, fillAlpha);
-        gfx.lineStyle(3, color, lineAlpha);
+      const zone = (gfx, color, fill, fillAlpha) => {
+        gfx.fillStyle(fill, fillAlpha);
         gfx.beginPath();
         gfx.arc(this.launchX, bottom, this.rules.zoneRadius, Math.PI, Math.PI * 2, false);
         gfx.closePath();
         gfx.fillPath();
-        gfx.strokePath();
+        for (const [width, c, alpha] of [[9, 0x000000, 0.45], [4, color, 0.9]]) {
+          gfx.lineStyle(width, c, alpha);
+          gfx.beginPath();
+          gfx.arc(this.launchX, bottom, this.rules.zoneRadius, Math.PI, Math.PI * 2, false);
+          gfx.strokePath();
+        }
       };
-      zone(this.add.graphics(), 0xffffff, 0.05, 0.25);
+      zone(this.add.graphics(), 0xffffff, 0x000000, 0.18);
       this.warnZone = this.add.graphics().setVisible(false);
-      zone(this.warnZone, col.warn, 0.25, 1);
+      zone(this.warnZone, col.warn, col.warn, 0.3);
 
-      Arcade.ui.text(this, W / 2, bottom + 50, this.contextLabel(), 24, col.muted, { bold: false });
+      Arcade.ui.text(this, W / 2, bottom + 50, this.contextLabel(), 24, col.text, { bold: false, stroke: true });
       Arcade.ui.muteButton(this, W - 44, bottom + 50);
     }
 
@@ -338,8 +355,15 @@ const TABLE_CONFIG = {
 
     createHud() {
       const W = Arcade.config.width;
-      const col = Arcade.config.colors;
+      const col = Arcade.ui.colors(this);
       const ui = Arcade.ui;
+      // A solid bar behind the score, so it reads the same on every scene.
+      const bar = this.add.graphics();
+      bar.fillStyle(col.panel, 0.92);
+      bar.fillRect(0, 0, W, T.hudHeight);
+      bar.fillStyle(col.border, 1);
+      bar.fillRect(0, T.hudHeight - 3, W, 3);
+
       ui.button(this, 76, 55, 112, 62, 'Menu', () => this.scene.start('TablePushStart'),
         { kind: 'secondary', fontSize: 28 }).setDepth(50);
 
@@ -358,7 +382,7 @@ const TABLE_CONFIG = {
 
     // One dot per allowed spill: filled red once used.
     drawStrikes() {
-      const col = Arcade.config.colors;
+      const col = Arcade.ui.colors(this);
       const g = this.strikeDots;
       g.clear();
       for (let i = 0; i < this.rules.maxStrikes; i++) {
@@ -444,8 +468,13 @@ const TABLE_CONFIG = {
       const start = this.radiusOf(this.current) + 10;
       for (let i = 0; i < count; i++) {
         const d = start + i * step;
-        g.fillStyle(0xffffff, (ready ? 0.9 : 0.35) * (1 - (i / count) * 0.6));
-        g.fillCircle(this.launchX + this.aim.dirX * d, this.launchY + this.aim.dirY * d, 6);
+        const alpha = (ready ? 0.9 : 0.35) * (1 - (i / count) * 0.6);
+        const x = this.launchX + this.aim.dirX * d;
+        const y = this.launchY + this.aim.dirY * d;
+        g.fillStyle(0x000000, alpha * 0.6); // dark ring, so the dots show on light tables
+        g.fillCircle(x, y, 9);
+        g.fillStyle(0xffffff, alpha);
+        g.fillCircle(x, y, 6);
       }
     }
 
@@ -544,7 +573,8 @@ const TABLE_CONFIG = {
       const ring = this.add.circle(x, y, big ? 90 : 40, Phaser.Display.Color.HexStringToColor(color).color, 0.5);
       this.tweens.add({ targets: ring, scale: big ? 3 : 1.8, alpha: 0, duration: big ? 500 : 260, onComplete: () => ring.destroy() });
 
-      const label = Arcade.ui.text(this, x, y, '+' + Arcade.formatScore(points), big ? 64 : 34, Arcade.config.colors.text);
+      const label = Arcade.ui.text(this, x, y, '+' + Arcade.formatScore(points), big ? 64 : 34, Arcade.ui.colors(this).text,
+        { stroke: true });
       label.setDepth(40);
       this.tweens.add({ targets: label, y: y - (big ? 120 : 70), alpha: 0, duration: big ? 1100 : 650, onComplete: () => label.destroy() });
     }
@@ -559,7 +589,7 @@ const TABLE_CONFIG = {
       this.drawStrikes();
       this.playEffect('spill', T.sounds.spill);
 
-      const label = Arcade.ui.text(this, x, y, 'Spill!', 34, Arcade.config.colors.accent).setDepth(40);
+      const label = Arcade.ui.text(this, x, y, 'Spill!', 34, Arcade.ui.colors(this).accent, { stroke: true }).setDepth(40);
       this.tweens.add({ targets: label, y: y + 50, alpha: 0, duration: 900, onComplete: () => label.destroy() });
 
       if (this.strikes >= this.rules.maxStrikes) this.gameOver('spills');
@@ -614,7 +644,7 @@ const TABLE_CONFIG = {
 
       const W = Arcade.config.width;
       const H = Arcade.config.height;
-      const col = Arcade.config.colors;
+      const col = Arcade.ui.colors(this);
       const ui = Arcade.ui;
       const depth = 100;
       const line = Arcade.resultLine(T.title, this.period, this.difficultyId, this.score, this.skin.name);
