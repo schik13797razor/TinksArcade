@@ -520,11 +520,11 @@ const Arcade = (() => {
       text(this, W / 2, 170, C.title, 64);
       text(this, W / 2, 245, 'Pick a game', 32, C.colors.muted, { bold: false });
 
-      let y = 380;
+      let y = 340; // three games fit with 200 between them
       for (const game of games) {
         button(this, W / 2, y, 500, 110, game.title, () => this.scene.start(game.startScene), { fontSize: 40 });
         text(this, W / 2, y + 72, game.blurb, 28, C.colors.muted, { bold: false, wrap: 500, originY: 0 });
-        y += 220;
+        y += 200;
       }
 
       text(this, W / 2, 930, 'More games coming soon.', 28, C.colors.muted, { bold: false });

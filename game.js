@@ -300,25 +300,34 @@ const ITEM_PAD = 6;
 // it loaded, otherwise a placeholder shape, with an outline and a soft shadow so
 // it stands out on any scene. Runs after loadSkinFiles has finished.
 function ensureSkinTextures(scene, skinId) {
-  const skin = CONFIG.skins[skinId];
   CONFIG.tiers.forEach((t, i) => {
-    const tier = i + 1;
-    const key = tierTextureKey(skinId, tier);
-    if (scene.textures.exists(key)) return;
-    const size = t.radius * 2;
-    const art = document.createElement('canvas');
-    art.width = size;
-    art.height = size;
-    const file = skinFileKey(skinId, tierArtFile(tier));
-    if (scene.textures.exists(file)) {
-      drawArt(art.getContext('2d'), scene.textures.get(file).getSourceImage(), size);
-    } else {
-      drawPlaceholder(art.getContext('2d'), t.radius, tier, skin);
-    }
-    const tex = scene.textures.createCanvas(key, size + ITEM_PAD * 2, size + ITEM_PAD * 2);
-    drawWithOutline(tex.getContext(), art, ITEM_PAD);
-    tex.refresh();
+    const key = tierTextureKey(skinId, i + 1);
+    if (!scene.textures.exists(key)) makeTierTexture(scene, skinId, i + 1, t.radius, key);
   });
+}
+
+// The same item drawn at any radius (Pop Shot shows every tier at one size).
+// Returns the texture key. Runs after loadSkinFiles has finished.
+function tierTextureAtRadius(scene, skinId, tier, radius) {
+  const key = `${tierTextureKey(skinId, tier)}-r${radius}`;
+  if (!scene.textures.exists(key)) makeTierTexture(scene, skinId, tier, radius, key);
+  return key;
+}
+
+function makeTierTexture(scene, skinId, tier, radius, key) {
+  const size = radius * 2;
+  const art = document.createElement('canvas');
+  art.width = size;
+  art.height = size;
+  const file = skinFileKey(skinId, tierArtFile(tier));
+  if (scene.textures.exists(file)) {
+    drawArt(art.getContext('2d'), scene.textures.get(file).getSourceImage(), size);
+  } else {
+    drawPlaceholder(art.getContext('2d'), radius, tier, CONFIG.skins[skinId]);
+  }
+  const tex = scene.textures.createCanvas(key, size + ITEM_PAD * 2, size + ITEM_PAD * 2);
+  drawWithOutline(tex.getContext(), art, ITEM_PAD);
+  tex.refresh();
 }
 
 // Draws the item with a dark outline that follows its shape, and a soft shadow under it.
