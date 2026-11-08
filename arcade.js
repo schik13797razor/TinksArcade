@@ -40,7 +40,7 @@ const ARCADE_CONFIG = {
     click: [{ freq: 660, to: 880, type: 'triangle', duration: 0.05, volume: 0.15 }],
   },
 
-  // Background sound: a quiet loop for each skin (fireplace, café, restaurant), with
+  // Background sound: quiet music for each skin (rainy cottage, café jazz, dinner piano), with
   // its own volume, separate from the sound effects. Off until a player turns it on.
   //   level:  how loud the loop is at 100% on the volume slider (0 to 1)
   //   volume: where the slider starts (0 to 1)
@@ -683,7 +683,7 @@ const Arcade = (() => {
 
       const s = settings.get();
       this.row(230, 'Sound effects', 'Drops, pops and clicks.', !sfx.muted, (on) => sfx.setMuted(!on));
-      this.row(370, 'Background sound', 'A quiet loop for each skin: a crackling fire, a café, a restaurant.',
+      this.row(370, 'Background sound', 'Quiet music for each skin: rain and soft keys, café jazz, a dinner pianist.',
         s.ambient, (on) => settings.set({ ambient: on }));
       this.volumeSlider(510, s.ambientVolume);
       this.row(660, 'Reduce motion', 'Turns off background animation, like rain, steam and flickering lights.',
